@@ -136,7 +136,7 @@ def main():
             else:
                 percent = 5 + ((bakiye - 500) / 3500) * 95
                 
-            if percent <= 10.0:
+            if percent <= 100.0:
                 print("Bakiye %10 veya altına düştü! Uyarı maili tetikleniyor...")
                 send_alert_email(bakiye, percent)
                 
@@ -147,3 +147,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
