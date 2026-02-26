@@ -56,15 +56,21 @@ if df.empty:
     st.error("Veri bulunamadı.")
     st.stop()
 
-# --- VERİ ANALİZİ ---
+# --- AYARLAR VE ANALİZ ---
+KESINTI_SINIRI = 300 # Kullanıcının belirttiği kritik kesinti sınırı
 latest = df.iloc[-1]
 curr_bal = latest['balance']
 last_upd = latest['date_time']
 
-# Pil Hesaplama
-if curr_bal >= 4000: percent = 100.0
-elif curr_bal <= 500: percent = (curr_bal / 500) * 5.0
-else: percent = 5 + ((curr_bal - 500) / 3500) * 95
+# Pil Hesaplama (300 TRY = %0, 4000 TRY+ = %100)
+if curr_bal >= 4000: 
+    percent = 100.0
+elif curr_bal <= KESINTI_SINIRI:
+    percent = 0.0
+else:
+    # 300 ile 4000 arasını %0 ile %100 arasına oranla
+    percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
+
 color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
 # Tüketim Analizi (Son 7 Gün)
@@ -77,8 +83,9 @@ if len(recent_df) > 1:
     days = (recent_df['date_time'].max() - recent_df['date_time'].min()).days or 1
     avg_daily = drops.sum() / days
 
-# Stratejik Hesaplamalar
-days_left = curr_bal / avg_daily if avg_daily > 0 else 0
+# Stratejik Hesaplamalar (Kullanılabilir bakiye üzerinden)
+usable_bal = max(0, curr_bal - KESINTI_SINIRI)
+days_left = usable_bal / avg_daily if avg_daily > 0 else 0
 finish_date = datetime.now() + timedelta(days=days_left)
 weekly_cost = avg_daily * 7
 
@@ -89,18 +96,18 @@ st.title("⚡ KIBTEK Enerji")
 if (datetime.now() - last_upd).total_seconds() > 43200:
     st.markdown('<div class="offline-box">⚠️ SİSTEM ÇEVRİMDIŞI (12+ Saat)</div>', unsafe_allow_html=True)
 
-# Pil Göstergesi (Kompakt Mobil Tip)
+# Pil Göstergesi
 st.markdown(f"""
     <div style="background:#1a1a1a; border-radius:15px; padding:15px; border:1px solid #333;">
         <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-            <span style="color:#aaa;">Bakiye Durumu</span>
+            <span style="color:#aaa;">Kullanılabilir Enerji</span>
             <span style="font-weight:bold; color:{color};">%{percent:.1f}</span>
         </div>
         <div style="width:100%; height:25px; background:#333; border-radius:20px; overflow:hidden;">
             <div style="width:{percent}%; height:100%; background:{color}; transition:1s;"></div>
         </div>
         <div style="margin-top:10px; font-size:1.5rem; font-weight:bold;">{int(curr_bal)} ₺</div>
-        <div style="color:#666; font-size:0.8rem;">Son Güncelleme: {last_upd.strftime('%H:%M | %d.%m')}</div>
+        <div style="color:#666; font-size:0.8rem;">Eşik: {KESINTI_SINIRI} ₺ | Güncelleme: {last_upd.strftime('%H:%M | %d.%m')}</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -109,14 +116,14 @@ st.write("")
 # Metrikler
 c1, c2 = st.columns(2)
 with c1:
-    st.metric("Günlük Ort.", f"{int(avg_daily)} ₺", help="Son 7 günlük ortalama")
+    st.metric("Günlük Ort. Tüketim", f"{int(avg_daily)} ₺")
 with c2:
-    st.metric("Haftalık Tahmin", f"{int(weekly_cost)} ₺", delta=None)
+    st.metric("Haftalık Tahmin", f"{int(weekly_cost)} ₺")
 
 # Stratejik Kart
 st.markdown(f"""
     <div class="status-card" style="border-left-color: {color};">
-        <div style="color:#aaa; font-size:0.9rem;">Tahmini Kesinti Tarihi</div>
+        <div style="color:#aaa; font-size:0.9rem;">Tahmini Kesinti Tarihi ({KESINTI_SINIRI} ₺ Altı)</div>
         <div style="font-size:1.4rem; font-weight:bold; margin-top:5px;">
             {finish_date.strftime('%d %B %Y')}
         </div>
@@ -127,8 +134,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Grafik
-st.subheader("Kullanım Trendi")
+st.subheader("Bakiye Akışı")
 st.area_chart(df.set_index('date_time')['balance'], height=200)
 
-# Alt Bilgi
-st.caption(f"Hesap No: {latest['account_no']} | Bulut Otomasyonu Aktif")
+st.caption(f"Hesap No: {latest['account_no']} | Kesinti Eşiği Dikkate Alınmıştır")
