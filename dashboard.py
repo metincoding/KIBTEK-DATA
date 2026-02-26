@@ -90,7 +90,7 @@ finish_date = datetime.now() + timedelta(days=days_left)
 weekly_cost = avg_daily * 7
 
 # --- UI BAŞLANGIÇ ---
-st.title("⚡ KIBTEK Enerji")
+st.title("⚡ Daire 6")
 
 # Offline Kontrolü
 if (datetime.now() - last_upd).total_seconds() > 43200:
@@ -138,3 +138,4 @@ st.subheader("Bakiye Akışı")
 st.area_chart(df.set_index('date_time')['balance'], height=200)
 
 st.caption(f"Hesap No: {latest['account_no']} | Kesinti Eşiği Dikkate Alınmıştır")
+
