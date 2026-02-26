@@ -19,10 +19,12 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_balance():
     chrome_options = Options()
-    chrome_options.add_argument("--headless") # GitHub Actions'da çalışması için headless ŞARTTIR
+    chrome_options.add_argument("--headless=new") # Daha modern ve gizli arayüzsüz mod
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
+    # GİZLİLİK ZIRHI: Bot olduğumuzu gizleyen sahte kullanıcı kimliği
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     
     try:
         service = Service(ChromeDriverManager().install())
@@ -97,4 +99,5 @@ def main():
         print("\n❌ İŞLEM BAŞARISIZ.")
 
 if __name__ == "__main__":
+
     main()
