@@ -1,0 +1,32 @@
+name: Kibtek Bakiye Scraper
+
+on:
+  schedule:
+    - cron: '0 5,17 * * *' # Her gün sabah 08:00 ve akşam 20:00'de çalışır (UTC saatine göre ayarlanmıştır)
+  workflow_dispatch: # İstediğimiz zaman manuel çalıştırma butonu ekler
+
+jobs:
+  scrape-and-save:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Repoyu Klonla
+      uses: actions/checkout@v3
+
+    - name: Python Kurulumu
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Chrome Kurulumu
+      uses: browser-actions/setup-chrome@latest
+
+    - name: Kütüphaneleri Yükle
+      run: |
+        pip install -r requirements.txt
+
+    - name: Botu Çalıştır
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      run: |
+        python app.py
