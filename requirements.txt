@@ -1,0 +1,5 @@
+selenium
+webdriver-manager
+psycopg2-binary
+streamlit
+pandas
