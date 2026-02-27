@@ -157,7 +157,7 @@ if not recharges.empty:
                 <div class="recharge-item">
                     <div>
                         <div style="font-weight:bold;">KIBTEK Yükleme</div>
-                        <div class="recharge-date">f"{row['date_time'].day} {TR_AYLAR[row['date_time'].month]}, {row['date_time'].strftime('%H:%M')}"</div>
+                        <div class="recharge-date">{row['date_time'].day} {TR_AYLAR[row['date_time'].month]}, {row['date_time'].strftime('%H:%M')}</div>
                     </div>
                     <div class="recharge-amount">+{int(row['diff'])} ₺</div>
                 </div>
@@ -172,4 +172,5 @@ st.subheader("Bakiye Akışı")
 st.area_chart(df.set_index('date_time')['balance'], height=200)
 
 st.caption(f"Hesap No: {latest['account_no']} | Otomatik Hareket Analizi")
+
 
