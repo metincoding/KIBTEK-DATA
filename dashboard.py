@@ -136,7 +136,7 @@ st.write("")
 st.markdown(f"""
     <div class="status-card" style="border-left-color: {color};">
         <div style="color:#aaa; font-size:0.9rem;">Tahmini Kesinti</div>
-        <div style="font-size:1.4rem; font-weight:bold; margin-top:5px;">f"{finish_date.day} {TR_AYLAR[finish_date.month]} {finish_date.year}"</div>
+        <div style="font-size:1.4rem; font-weight:bold; margin-top:5px;">{finish_date.day} {TR_AYLAR[finish_date.month]} {finish_date.year}</div>
         <div style="color:{color}; font-size:0.8rem;">Yaklaşık {int(days_left)} gün sonra</div>
     </div>
 """, unsafe_allow_html=True)
@@ -172,5 +172,6 @@ st.subheader("Bakiye Akışı")
 st.area_chart(df.set_index('date_time')['balance'], height=200)
 
 st.caption(f"Hesap No: {latest['account_no']} | Otomatik Hareket Analizi")
+
 
 
