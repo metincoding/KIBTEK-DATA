@@ -3,6 +3,12 @@ import pandas as pd
 import psycopg2
 from datetime import datetime, timedelta
 
+# --- TÜRKÇE AYARLAR ---
+TR_AYLAR = {
+    1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+    7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
+}
+
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="KIBTEK Mobil Panel", page_icon="⚡", layout="centered")
 
@@ -130,7 +136,7 @@ st.write("")
 st.markdown(f"""
     <div class="status-card" style="border-left-color: {color};">
         <div style="color:#aaa; font-size:0.9rem;">Tahmini Kesinti</div>
-        <div style="font-size:1.4rem; font-weight:bold; margin-top:5px;">{finish_date.strftime('%d %B %Y')}</div>
+        <div style="font-size:1.4rem; font-weight:bold; margin-top:5px;">f"{finish_date.day} {TR_AYLAR[finish_date.month]} {finish_date.year}"</div>
         <div style="color:{color}; font-size:0.8rem;">Yaklaşık {int(days_left)} gün sonra</div>
     </div>
 """, unsafe_allow_html=True)
@@ -151,7 +157,7 @@ if not recharges.empty:
                 <div class="recharge-item">
                     <div>
                         <div style="font-weight:bold;">KIBTEK Yükleme</div>
-                        <div class="recharge-date">{row['date_time'].strftime('%d %B, %H:%M')}</div>
+                        <div class="recharge-date">f"{row['date_time'].day} {TR_AYLAR[row['date_time'].month]}, {row['date_time'].strftime('%H:%M')}"</div>
                     </div>
                     <div class="recharge-amount">+{int(row['diff'])} ₺</div>
                 </div>
@@ -166,3 +172,4 @@ st.subheader("Bakiye Akışı")
 st.area_chart(df.set_index('date_time')['balance'], height=200)
 
 st.caption(f"Hesap No: {latest['account_no']} | Otomatik Hareket Analizi")
+
