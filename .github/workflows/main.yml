@@ -2,7 +2,7 @@ name: Kibtek Bakiye Scraper
 
 on:
   schedule:
-    - cron: '0 5,17 * * *' # Her gün sabah 08:00 ve akşam 20:00'de çalışır (UTC saatine göre ayarlanmıştır)
+    - cron: '0 7 * * *'
   workflow_dispatch: # İstediğimiz zaman manuel çalıştırma butonu ekler
 
 jobs:
