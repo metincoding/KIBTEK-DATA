@@ -4,7 +4,7 @@ import psycopg2
 from datetime import datetime, timedelta
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Daire 6 Akıllı Panel", page_icon="🏠", layout="centered")
+st.set_page_config(page_title="Daire 6", page_icon="🏠", layout="centered")
 
 TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
@@ -130,7 +130,7 @@ if not df_ann.empty and df_ann.iloc[0]['message'].strip():
 
 hafta_no = datetime.now().isocalendar()[1]
 nobetci = EV_SAKINLERI[hafta_no % len(EV_SAKINLERI)]
-st.markdown(f"<div class='duty-box'>🧹 <b>Bu Haftanın Temizlik ve Çöp Nöbetçisi:</b> <span style='color:#4CAF50; font-size:1.2rem;'>{nobetci}</span></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='duty-box'>🧹 <b>Bu Haftanın Temizlik Nöbeti:</b> <span style='color:#4CAF50; font-size:1.2rem;'>{nobetci}</span></div>", unsafe_allow_html=True)
 
 # ==========================================
 # ⚡ 1. BÖLÜM: ENERJİ YÖNETİMİ
@@ -239,7 +239,7 @@ if not df_shop.empty:
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 else:
-    st.info("Buzdolabı dolu, eksik yok! 😎")
+    st.info("Evde Eksik Yok! 😎")
 
 st.write("---")
 
@@ -310,3 +310,4 @@ if not df_energy.empty:
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info("Henüz bir yükleme hareketi tespit edilmedi.")
+
