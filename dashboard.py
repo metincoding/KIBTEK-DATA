@@ -144,8 +144,9 @@ if not df_energy.empty:
     last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago].copy()
     last_24h_cons = last_24h_df[last_24h_df['balance'].diff() < 0]['balance'].diff().abs().sum() if len(last_24h_df) > 1 else 0
 
-    usable_bal = max(0, curr_bal - KESINTI_SINIRI)
-    days_left = usable_bal / avg_daily if avg_daily > 0 else 0
+    # HATA DÜZELTME: Gün sayısı zorunlu olarak tam sayıya (int) çevrildi.
+    usable_bal = max(0, float(curr_bal) - KESINTI_SINIRI)
+    days_left = int(usable_bal / avg_daily) if avg_daily > 0 else 0
     tahmini_kesinti_tarihi = datetime.now() + timedelta(days=days_left)
 
     st.markdown(f"""
