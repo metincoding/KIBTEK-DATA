@@ -12,6 +12,13 @@ TR_AYLAR = {
     7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
 }
 
+# Ev Sakinleri
+EV_SAKINLERI = ["Metin", "Ev Arkadaşı 2", "Ev Arkadaşı 3", "Ev Arkadaşı 4"]
+
+# Dinamik Değişkenler (Session State)
+if 'kesinti_siniri' not in st.session_state:
+    st.session_state['kesinti_siniri'] = 300
+
 # --- GELİŞMİŞ CSS ---
 st.markdown("""
     <style>
@@ -51,14 +58,15 @@ st.markdown("""
 # GÜVENLİK
 DB_URL = st.secrets["DATABASE_URL"]
 
-# --- VERİ ÇEKME FONKSİYONLARI ---
+# --- VERİTABANI İŞLEMLERİ ---
 @st.cache_data(ttl=300)
 def load_energy_data():
     try:
         conn = psycopg2.connect(DB_URL)
         df = pd.read_sql_query("SELECT * FROM readings ORDER BY date_time ASC", conn)
         conn.close()
-        df['date_time'] = pd.to_datetime(df['date_time'])
+        if not df.empty:
+            df['date_time'] = pd.to_datetime(df['date_time'])
         return df
     except: return pd.DataFrame()
 
@@ -73,7 +81,6 @@ def load_expense_data():
         return df
     except: return pd.DataFrame()
 
-# Harcama Ekleme Fonksiyonu
 def add_expense(item, price, buyer):
     conn = psycopg2.connect(DB_URL)
     c = conn.cursor()
@@ -84,70 +91,123 @@ def add_expense(item, price, buyer):
     conn.close()
     load_expense_data.clear()
 
+def clear_table(table_name):
+    conn = psycopg2.connect(DB_URL)
+    c = conn.cursor()
+    c.execute(f"TRUNCATE TABLE {table_name} RESTART IDENTITY;")
+    conn.commit()
+    c.close()
+    conn.close()
+    load_expense_data.clear()
+    load_energy_data.clear()
+
+# ==========================================
+# 🔐 ADMİN PANELİ (SİDEBAR)
+# ==========================================
+with st.sidebar:
+    st.header("🛠️ Yönetim Paneli")
+    
+    if not st.session_state.get('admin_logged_in', False):
+        st.write("Lütfen giriş yapın.")
+        admin_user = st.text_input("Kullanıcı Adı")
+        admin_pass = st.text_input("Şifre", type="password")
+        
+        if st.button("Giriş Yap", use_container_width=True):
+            if admin_user == "admin" and admin_pass == "685600":
+                st.session_state['admin_logged_in'] = True
+                st.rerun()
+            else:
+                st.error("Hatalı kullanıcı adı veya şifre!")
+    else:
+        st.success("Yönetici girişi aktif.")
+        if st.button("Çıkış Yap", use_container_width=True):
+            st.session_state['admin_logged_in'] = False
+            st.rerun()
+            
+        st.divider()
+        st.subheader("⚙️ Teknik Parametreler")
+        # Dinamik olarak kesinti sınırını ayarlama
+        yeni_sinir = st.number_input("Kesinti Sınırı (₺)", value=st.session_state['kesinti_siniri'], step=50)
+        if st.button("Sınırı Güncelle", use_container_width=True):
+            st.session_state['kesinti_siniri'] = yeni_sinir
+            st.success("Güncellendi!")
+            st.rerun()
+            
+        st.divider()
+        st.subheader("🗑️ Veri Yönetimi")
+        st.warning("Bu işlemler geri alınamaz!")
+        
+        if st.button("Tüm Harcamaları Sıfırla", type="primary", use_container_width=True):
+            clear_table("expenses")
+            st.success("Harcamalar silindi!")
+            st.rerun()
+            
+        if st.button("Tüm Enerji Geçmişini Sıfırla", type="primary", use_container_width=True):
+            clear_table("readings")
+            st.success("Enerji verileri silindi!")
+            st.rerun()
+
+# --- VERİLERİ YÜKLE ---
 df = load_energy_data()
 df_exp = load_expense_data()
-
-if df.empty:
-    st.error("Enerji verisi bulunamadı.")
-    st.stop()
 
 # ==========================================
 # ⚡ 1. BÖLÜM: ENERJİ YÖNETİMİ
 # ==========================================
 st.title("🏠 Daire 6 Ortak Panel")
 
-KESINTI_SINIRI = 300 
-latest = df.iloc[-1]
-curr_bal = latest['balance']
-last_upd = latest['date_time']
+if not df.empty:
+    KESINTI_SINIRI = st.session_state['kesinti_siniri']
+    latest = df.iloc[-1]
+    curr_bal = latest['balance']
+    last_upd = latest['date_time']
 
-# Pil Hesaplama
-if curr_bal >= 4000: percent = 100.0
-elif curr_bal <= KESINTI_SINIRI: percent = 0.0
-else: percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
-color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
+    if curr_bal >= 4000: percent = 100.0
+    elif curr_bal <= KESINTI_SINIRI: percent = 0.0
+    else: percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
+    color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
-# Enerji Analizi
-seven_days_ago = datetime.now() - timedelta(days=7)
-recent_df = df[df['date_time'] >= seven_days_ago].copy()
-avg_daily = 0
-if len(recent_df) > 1:
-    recent_df['diff_cons'] = recent_df['balance'].diff()
-    drops = recent_df[recent_df['diff_cons'] < 0]['diff_cons'].abs()
-    days = (recent_df['date_time'].max() - recent_df['date_time'].min()).days or 1
-    avg_daily = drops.sum() / days
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    recent_df = df[df['date_time'] >= seven_days_ago].copy()
+    avg_daily = 0
+    if len(recent_df) > 1:
+        recent_df['diff_cons'] = recent_df['balance'].diff()
+        drops = recent_df[recent_df['diff_cons'] < 0]['diff_cons'].abs()
+        days = (recent_df['date_time'].max() - recent_df['date_time'].min()).days or 1
+        avg_daily = drops.sum() / days
 
-one_day_ago = last_upd - timedelta(hours=24.5)
-last_24h_df = df[df['date_time'] >= one_day_ago].copy()
-last_24h_cons = 0
-if len(last_24h_df) > 1:
-    last_24h_df['diff_cons'] = last_24h_df['balance'].diff()
-    last_24h_cons = last_24h_df[last_24h_df['diff_cons'] < 0]['diff_cons'].abs().sum()
+    one_day_ago = last_upd - timedelta(hours=24.5)
+    last_24h_df = df[df['date_time'] >= one_day_ago].copy()
+    last_24h_cons = 0
+    if len(last_24h_df) > 1:
+        last_24h_df['diff_cons'] = last_24h_df['balance'].diff()
+        last_24h_cons = last_24h_df[last_24h_df['diff_cons'] < 0]['diff_cons'].abs().sum()
 
-usable_bal = max(0, curr_bal - KESINTI_SINIRI)
-days_left = usable_bal / avg_daily if avg_daily > 0 else 0
-finish_date = datetime.now() + timedelta(days=days_left)
+    usable_bal = max(0, curr_bal - KESINTI_SINIRI)
+    days_left = usable_bal / avg_daily if avg_daily > 0 else 0
+    finish_date = datetime.now() + timedelta(days=days_left)
 
-# Ana Enerji Kartı
-st.markdown(f"""
-    <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-            <span style="color:#aaa;">⚡ KIBTEK Enerji Bakiye</span>
-            <span style="font-weight:bold; color:{color};">%{percent:.1f}</span>
+    st.markdown(f"""
+        <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <span style="color:#aaa;">⚡ KIBTEK Enerji Bakiye</span>
+                <span style="font-weight:bold; color:{color};">%{percent:.1f}</span>
+            </div>
+            <div style="width:100%; height:25px; background:#333; border-radius:20px; overflow:hidden;">
+                <div style="width:{percent}%; height:100%; background:{color}; transition:1s;"></div>
+            </div>
+            <div style="margin-top:15px; font-size:2rem; font-weight:bold;">{int(curr_bal)} ₺</div>
+            <div style="color:#666; font-size:0.8rem;">Güncelleme: {last_upd.strftime('%H:%M')} | {last_upd.day} {TR_AYLAR[last_upd.month]}</div>
         </div>
-        <div style="width:100%; height:25px; background:#333; border-radius:20px; overflow:hidden;">
-            <div style="width:{percent}%; height:100%; background:{color}; transition:1s;"></div>
-        </div>
-        <div style="margin-top:15px; font-size:2rem; font-weight:bold;">{int(curr_bal)} ₺</div>
-        <div style="color:#666; font-size:0.8rem;">Güncelleme: {last_upd.strftime('%H:%M')} | {last_upd.day} {TR_AYLAR[last_upd.month]}</div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-st.write("")
-c1, c2, c3 = st.columns(3)
-with c1: st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
-with c2: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
-with c3: st.metric("Tahmini Bitiş", f"{int(days_left)} Gün")
+    st.write("")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
+    with c2: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
+    with c3: st.metric("Tahmini Bitiş", f"{int(days_left)} Gün")
+else:
+    st.info("Sistemde henüz enerji verisi yok. Botun çalışması bekleniyor.")
 
 st.write("---")
 
@@ -156,10 +216,6 @@ st.write("---")
 # ==========================================
 st.subheader("🛒 Ortak Ev Harcamaları")
 
-# Ev arkadaşı listesi (Burayı kendi isimlerinizle değiştirebilirsiniz)
-EV_SAKINLERI = ["Metin", "Murat", "Zafer", "Mehmet"]
-
-# Harcama Formu
 with st.expander("➕ Yeni Harcama Ekle"):
     with st.form("expense_form", clear_on_submit=True):
         item_name = st.text_input("Alınan Ürün / Hizmet (Örn: Mutfak Alışverişi)")
@@ -176,11 +232,9 @@ with st.expander("➕ Yeni Harcama Ekle"):
             else:
                 st.warning("Lütfen ürün adı ve geçerli bir tutar girin.")
 
-# Harcama Analizi
 total_expense = df_exp['price'].sum() if not df_exp.empty else 0
 per_person = total_expense / 4
 
-# Harcama Özet Kartı
 st.markdown(f"""
     <div class="expense-card">
         <div style="color:#aaa; font-size:0.9rem;">Toplam Ev Harcaması</div>
@@ -192,13 +246,10 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# Son Harcamalar Listesi
 if not df_exp.empty:
     st.markdown('<div style="background:#161b22; border-radius:12px; padding:5px;">', unsafe_allow_html=True)
     for _, row in df_exp.head(5).iterrows(): 
-        # Eğer eski verilerde buyer boşsa hata vermesin diye kontrol
         buyer_name = row.get('buyer', 'Bilinmiyor')
-        
         st.markdown(f"""
             <div class="list-item">
                 <div>
@@ -218,17 +269,15 @@ else:
 # ==========================================
 # 📈 3. BÖLÜM: GRAFİKLER VE DİĞERLERİ
 # ==========================================
-st.write("---")
-with st.expander("📊 Enerji Bakiye Akışı ve Son Yüklemeler"):
-    df['diff'] = df['balance'].diff()
-    recharges = df[df['diff'] > 20].copy().sort_values(by='date_time', ascending=False)
-    
-    st.area_chart(df.set_index('date_time')['balance'], height=200)
-    
-    if not recharges.empty:
-        st.markdown('**Son KIBTEK Yüklemeleri:**')
-        for _, row in recharges.head(3).iterrows():
-            st.markdown(f"- {row['date_time'].day} {TR_AYLAR[row['date_time'].month]}: **+{int(row['diff'])} ₺**")
-
-
-
+if not df.empty:
+    st.write("---")
+    with st.expander("📊 Enerji Bakiye Akışı ve Son Yüklemeler"):
+        df['diff'] = df['balance'].diff()
+        recharges = df[df['diff'] > 20].copy().sort_values(by='date_time', ascending=False)
+        
+        st.area_chart(df.set_index('date_time')['balance'], height=200)
+        
+        if not recharges.empty:
+            st.markdown('**Son KIBTEK Yüklemeleri:**')
+            for _, row in recharges.head(3).iterrows():
+                st.markdown(f"- {row['date_time'].day} {TR_AYLAR[row['date_time'].month]}: **+{int(row['diff'])} ₺**")
