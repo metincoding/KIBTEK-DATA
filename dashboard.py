@@ -157,7 +157,7 @@ st.write("---")
 st.subheader("🛒 Ortak Ev Harcamaları")
 
 # Ev arkadaşı listesi (Burayı kendi isimlerinizle değiştirebilirsiniz)
-EV_SAKINLERI = ["Metin", "Ev Arkadaşı 2", "Ev Arkadaşı 3", "Ev Arkadaşı 4"]
+EV_SAKINLERI = ["Metin", "Murat", "Zafer", "Mehmet"]
 
 # Harcama Formu
 with st.expander("➕ Yeni Harcama Ekle"):
@@ -229,3 +229,4 @@ with st.expander("📊 Enerji Bakiye Akışı ve Son Yüklemeler"):
         st.markdown('**Son KIBTEK Yüklemeleri:**')
         for _, row in recharges.head(3).iterrows():
             st.markdown(f"- {row['date_time'].day} {TR_AYLAR[row['date_time'].month]}: **+{int(row['diff'])} ₺**")
+
