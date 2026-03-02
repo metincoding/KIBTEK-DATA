@@ -130,22 +130,41 @@ st.markdown(f"<div class='duty-box'>🧹 <b>Bu Haftanın Temizlik ve Çöp Nöbe
 # ⚡ 1. BÖLÜM: ENERJİ YÖNETİMİ
 # ==========================================
 if not df_energy.empty:
-    KESINTI_SINIRI = st.session_state['kesinti_siniri']
-    latest = df_energy.iloc[-1]
-    curr_bal, last_upd = latest['balance'], latest['date_time']
-    percent = 100.0 if curr_bal >= 4000 else (0.0 if curr_bal <= KESINTI_SINIRI else ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100)
+    KESINTI_SINIRI = float(st.session_state['kesinti_siniri'])
+    
+    # Verileri garanti şekilde standart sayılara çeviriyoruz
+    curr_bal = float(df_energy.iloc[-1]['balance'])
+    last_upd = pd.to_datetime(df_energy.iloc[-1]['date_time'])
+    
+    if curr_bal >= 4000: percent = 100.0
+    elif curr_bal <= KESINTI_SINIRI: percent = 0.0
+    else: percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
+    # 7 Günlük Analiz (Tamamen Güvenli Matematik)
     seven_days_ago = datetime.now() - timedelta(days=7)
     recent_df = df_energy[df_energy['date_time'] >= seven_days_ago].copy()
-    avg_daily = recent_df[recent_df['balance'].diff() < 0]['balance'].diff().abs().sum() / max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days) if len(recent_df) > 1 else 0
+    
+    if len(recent_df) > 1:
+        diffs = recent_df['balance'].diff()
+        drops_sum = float(diffs[diffs < 0].abs().sum())
+        days_span = max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days)
+        avg_daily = drops_sum / days_span
+    else:
+        avg_daily = 0.0
 
+    # 24 Saatlik Analiz
     one_day_ago = last_upd - timedelta(hours=24.5)
     last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago].copy()
-    last_24h_cons = last_24h_df[last_24h_df['balance'].diff() < 0]['balance'].diff().abs().sum() if len(last_24h_df) > 1 else 0
+    
+    if len(last_24h_df) > 1:
+        diffs_24 = last_24h_df['balance'].diff()
+        last_24h_cons = float(diffs_24[diffs_24 < 0].abs().sum())
+    else:
+        last_24h_cons = 0.0
 
-    # HATA DÜZELTME: Gün sayısı zorunlu olarak tam sayıya (int) çevrildi.
-    usable_bal = max(0, float(curr_bal) - KESINTI_SINIRI)
+    # Güvenli Tarih Hesaplama
+    usable_bal = max(0.0, curr_bal - KESINTI_SINIRI)
     days_left = int(usable_bal / avg_daily) if avg_daily > 0 else 0
     tahmini_kesinti_tarihi = datetime.now() + timedelta(days=days_left)
 
