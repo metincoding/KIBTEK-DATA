@@ -109,9 +109,15 @@ with st.sidebar:
             clear_cache_all()
             st.rerun()
 
-# --- VERİLERİ YÜKLE ---
+# --- VERİLERİ YÜKLE VE SAYISAL TİPE ZORLA ---
 df_energy = load_data("readings", "date_time ASC")
+if not df_energy.empty:
+    df_energy['balance'] = pd.to_numeric(df_energy['balance'], errors='coerce') # GRAFİK HATASI BURADA DÜZELTİLDİ
+
 df_exp = load_data("expenses")
+if not df_exp.empty:
+    df_exp['price'] = pd.to_numeric(df_exp['price'], errors='coerce')
+
 df_shop = load_data("shopping_list", "date_added DESC")
 try: df_ann = execute_query("SELECT message FROM announcements LIMIT 1", is_select=True)
 except: df_ann = pd.DataFrame()
@@ -132,7 +138,6 @@ st.markdown(f"<div class='duty-box'>🧹 <b>Bu Haftanın Temizlik ve Çöp Nöbe
 if not df_energy.empty:
     KESINTI_SINIRI = float(st.session_state['kesinti_siniri'])
     
-    # Verileri garanti şekilde standart sayılara çeviriyoruz
     curr_bal = float(df_energy.iloc[-1]['balance'])
     last_upd = pd.to_datetime(df_energy.iloc[-1]['date_time'])
     
@@ -141,7 +146,6 @@ if not df_energy.empty:
     else: percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
-    # 7 Günlük Analiz (Tamamen Güvenli Matematik)
     seven_days_ago = datetime.now() - timedelta(days=7)
     recent_df = df_energy[df_energy['date_time'] >= seven_days_ago].copy()
     
@@ -153,7 +157,6 @@ if not df_energy.empty:
     else:
         avg_daily = 0.0
 
-    # 24 Saatlik Analiz
     one_day_ago = last_upd - timedelta(hours=24.5)
     last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago].copy()
     
@@ -163,7 +166,6 @@ if not df_energy.empty:
     else:
         last_24h_cons = 0.0
 
-    # Güvenli Tarih Hesaplama
     usable_bal = max(0.0, curr_bal - KESINTI_SINIRI)
     days_left = int(usable_bal / avg_daily) if avg_daily > 0 else 0
     tahmini_kesinti_tarihi = datetime.now() + timedelta(days=days_left)
