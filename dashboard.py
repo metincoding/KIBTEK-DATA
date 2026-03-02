@@ -43,7 +43,8 @@ st.markdown("""
     }
     .text-green { color: #4CAF50; font-weight: bold; font-size: 1.1rem; }
     .text-blue { color: #2196F3; font-weight: bold; font-size: 1.1rem; }
-    .text-muted { color: #888; font-size: 0.85rem; }
+    .text-muted { color: #888; font-size: 0.85rem; margin-top: 4px; }
+    .buyer-badge { background:#2a2e33; padding:3px 8px; border-radius:12px; font-size:0.75rem; color:#bbb; margin-left:8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -73,15 +74,15 @@ def load_expense_data():
     except: return pd.DataFrame()
 
 # Harcama Ekleme Fonksiyonu
-def add_expense(item, price):
+def add_expense(item, price, buyer):
     conn = psycopg2.connect(DB_URL)
     c = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO expenses (date_time, item_name, price) VALUES (%s, %s, %s)", (now, item, price))
+    c.execute("INSERT INTO expenses (date_time, item_name, price, buyer) VALUES (%s, %s, %s, %s)", (now, item, price, buyer))
     conn.commit()
     c.close()
     conn.close()
-    load_expense_data.clear() # Yeni veri eklendiğinde önbelleği temizle
+    load_expense_data.clear()
 
 df = load_energy_data()
 df_exp = load_expense_data()
@@ -155,18 +156,23 @@ st.write("---")
 # ==========================================
 st.subheader("🛒 Ortak Ev Harcamaları")
 
-# Harcama Formu (Gizlenebilir Kutu İçinde)
+# Ev arkadaşı listesi (Burayı kendi isimlerinizle değiştirebilirsiniz)
+EV_SAKINLERI = ["Metin", "Ev Arkadaşı 2", "Ev Arkadaşı 3", "Ev Arkadaşı 4"]
+
+# Harcama Formu
 with st.expander("➕ Yeni Harcama Ekle"):
     with st.form("expense_form", clear_on_submit=True):
         item_name = st.text_input("Alınan Ürün / Hizmet (Örn: Mutfak Alışverişi)")
         item_price = st.number_input("Toplam Tutar (₺)", min_value=0.0, format="%.2f", step=10.0)
+        item_buyer = st.selectbox("Satın Alan Kişi", EV_SAKINLERI)
+        
         submitted = st.form_submit_button("Listeye Ekle")
         
         if submitted:
             if item_name and item_price > 0:
-                add_expense(item_name, item_price)
-                st.success(f"{item_name} başarıyla eklendi!")
-                st.rerun() # Sayfayı yenile
+                add_expense(item_name, item_price, item_buyer)
+                st.success(f"{item_name}, {item_buyer} tarafından eklendi!")
+                st.rerun() 
             else:
                 st.warning("Lütfen ürün adı ve geçerli bir tutar girin.")
 
@@ -189,11 +195,17 @@ st.markdown(f"""
 # Son Harcamalar Listesi
 if not df_exp.empty:
     st.markdown('<div style="background:#161b22; border-radius:12px; padding:5px;">', unsafe_allow_html=True)
-    for _, row in df_exp.head(5).iterrows(): # Son 5 harcamayı göster
+    for _, row in df_exp.head(5).iterrows(): 
+        # Eğer eski verilerde buyer boşsa hata vermesin diye kontrol
+        buyer_name = row.get('buyer', 'Bilinmiyor')
+        
         st.markdown(f"""
             <div class="list-item">
                 <div>
-                    <div style="font-weight:bold;">{row['item_name']}</div>
+                    <div style="font-weight:bold;">
+                        {row['item_name']} 
+                        <span class="buyer-badge">👤 {buyer_name}</span>
+                    </div>
                     <div class="text-muted">{row['date_time'].day} {TR_AYLAR[row['date_time'].month]} {row['date_time'].year}</div>
                 </div>
                 <div class="text-blue">{row['price']:,.2f} ₺</div>
