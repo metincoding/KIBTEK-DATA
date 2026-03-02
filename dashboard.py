@@ -6,48 +6,22 @@ from datetime import datetime, timedelta
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Daire 6 Akıllı Panel", page_icon="🏠", layout="centered")
 
-# --- TÜRKÇE AYARLAR ---
-TR_AYLAR = {
-    1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
-    7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
-}
+TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
-# Ev Sakinleri
 EV_SAKINLERI = ["Metin", "Ev Arkadaşı 2", "Ev Arkadaşı 3", "Ev Arkadaşı 4"]
 
-# Dinamik Değişkenler (Session State)
-if 'kesinti_siniri' not in st.session_state:
-    st.session_state['kesinti_siniri'] = 300
+if 'kesinti_siniri' not in st.session_state: st.session_state['kesinti_siniri'] = 300
 
 # --- GELİŞMİŞ CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     [data-testid="stMetricValue"] { font-size: 1.5rem !important; } 
-    
-    .status-card {
-        background: linear-gradient(145deg, #1e1e1e, #141414);
-        padding: 1.5rem;
-        border-radius: 15px;
-        border-left: 5px solid #4CAF50;
-        margin-bottom: 1rem;
-    }
-    
-    .expense-card {
-        background: linear-gradient(145deg, #161b22, #0d1117);
-        padding: 1.5rem;
-        border-radius: 15px;
-        border-left: 5px solid #2196F3;
-        margin-bottom: 1rem;
-    }
-
-    .list-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px;
-        border-bottom: 1px solid #222;
-    }
+    .status-card { background: linear-gradient(145deg, #1e1e1e, #141414); padding: 1.5rem; border-radius: 15px; border-left: 5px solid #4CAF50; margin-bottom: 1rem; }
+    .expense-card { background: linear-gradient(145deg, #161b22, #0d1117); padding: 1.5rem; border-radius: 15px; border-left: 5px solid #2196F3; margin-bottom: 1rem; }
+    .announcement-box { background: linear-gradient(90deg, #ff8a00, #e52e71); padding: 15px; border-radius: 10px; text-align: center; font-weight: bold; margin-bottom: 20px; color: white; box-shadow: 0 4px 15px rgba(229, 46, 113, 0.4); }
+    .duty-box { background: #2a2e33; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #4CAF50; margin-bottom: 20px;}
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #222; }
     .text-green { color: #4CAF50; font-weight: bold; font-size: 1.1rem; }
     .text-blue { color: #2196F3; font-weight: bold; font-size: 1.1rem; }
     .text-muted { color: #888; font-size: 0.85rem; margin-top: 4px; }
@@ -55,69 +29,43 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# GÜVENLİK
 DB_URL = st.secrets["DATABASE_URL"]
 
 # --- VERİTABANI İŞLEMLERİ ---
+def execute_query(query, params=(), is_select=False):
+    conn = psycopg2.connect(DB_URL)
+    c = conn.cursor()
+    c.execute(query, params)
+    if is_select:
+        cols = [desc[0] for desc in c.description]
+        df = pd.DataFrame(c.fetchall(), columns=cols)
+        conn.close()
+        return df
+    conn.commit()
+    conn.close()
+
 @st.cache_data(ttl=300)
-def load_energy_data():
-    try:
-        conn = psycopg2.connect(DB_URL)
-        df = pd.read_sql_query("SELECT * FROM readings ORDER BY date_time ASC", conn)
-        conn.close()
-        if not df.empty:
-            df['date_time'] = pd.to_datetime(df['date_time'])
-        return df
+def load_data(table, order_by="date_time DESC"):
+    try: return execute_query(f"SELECT * FROM {table} ORDER BY {order_by}", is_select=True)
     except: return pd.DataFrame()
 
-@st.cache_data(ttl=60)
-def load_expense_data():
-    try:
-        conn = psycopg2.connect(DB_URL)
-        df = pd.read_sql_query("SELECT * FROM expenses ORDER BY date_time DESC", conn)
-        conn.close()
-        if not df.empty:
-            df['date_time'] = pd.to_datetime(df['date_time'])
-        return df
-    except: return pd.DataFrame()
-
-def add_expense(item, price, buyer):
-    conn = psycopg2.connect(DB_URL)
-    c = conn.cursor()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO expenses (date_time, item_name, price, buyer) VALUES (%s, %s, %s, %s)", (now, item, price, buyer))
-    conn.commit()
-    c.close()
-    conn.close()
-    load_expense_data.clear()
-
-def clear_table(table_name):
-    conn = psycopg2.connect(DB_URL)
-    c = conn.cursor()
-    c.execute(f"TRUNCATE TABLE {table_name} RESTART IDENTITY;")
-    conn.commit()
-    c.close()
-    conn.close()
-    load_expense_data.clear()
-    load_energy_data.clear()
+def clear_cache_all():
+    load_data.clear()
 
 # ==========================================
 # 🔐 ADMİN PANELİ (SİDEBAR)
 # ==========================================
 with st.sidebar:
     st.header("🛠️ Yönetim Paneli")
-    
     if not st.session_state.get('admin_logged_in', False):
         st.write("Lütfen giriş yapın.")
         admin_user = st.text_input("Kullanıcı Adı")
         admin_pass = st.text_input("Şifre", type="password")
-        
         if st.button("Giriş Yap", use_container_width=True):
             if admin_user == "admin" and admin_pass == "685600":
                 st.session_state['admin_logged_in'] = True
                 st.rerun()
-            else:
-                st.error("Hatalı kullanıcı adı veya şifre!")
+            else: st.error("Hatalı giriş!")
     else:
         st.success("Yönetici girişi aktif.")
         if st.button("Çıkış Yap", use_container_width=True):
@@ -125,67 +73,62 @@ with st.sidebar:
             st.rerun()
             
         st.divider()
-        st.subheader("⚙️ Teknik Parametreler")
-        # Dinamik olarak kesinti sınırını ayarlama
+        st.subheader("📢 Ev Panosunu Güncelle")
+        yeni_duyuru = st.text_area("Mesajınız:")
+        if st.button("Panoya As", use_container_width=True):
+            execute_query("UPDATE announcements SET message = %s, updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT id FROM announcements LIMIT 1)", (yeni_duyuru,))
+            clear_cache_all()
+            st.success("Duyuru güncellendi!")
+            st.rerun()
+
+        st.divider()
+        st.subheader("⚙️ Parametreler")
         yeni_sinir = st.number_input("Kesinti Sınırı (₺)", value=st.session_state['kesinti_siniri'], step=50)
         if st.button("Sınırı Güncelle", use_container_width=True):
             st.session_state['kesinti_siniri'] = yeni_sinir
-            st.success("Güncellendi!")
             st.rerun()
             
         st.divider()
         st.subheader("🗑️ Veri Yönetimi")
-        st.warning("Bu işlemler geri alınamaz!")
-        
-        if st.button("Tüm Harcamaları Sıfırla", type="primary", use_container_width=True):
-            clear_table("expenses")
-            st.success("Harcamalar silindi!")
-            st.rerun()
-            
-        if st.button("Tüm Enerji Geçmişini Sıfırla", type="primary", use_container_width=True):
-            clear_table("readings")
-            st.success("Enerji verileri silindi!")
+        if st.button("Harcamaları Sıfırla", type="primary", use_container_width=True):
+            execute_query("TRUNCATE TABLE expenses RESTART IDENTITY;")
+            clear_cache_all()
             st.rerun()
 
 # --- VERİLERİ YÜKLE ---
-df = load_energy_data()
-df_exp = load_expense_data()
+df_energy = load_data("readings", "date_time ASC")
+df_exp = load_data("expenses")
+df_shop = load_data("shopping_list", "date_added DESC")
+try: df_ann = execute_query("SELECT message FROM announcements LIMIT 1", is_select=True)
+except: df_ann = pd.DataFrame()
+
+# ==========================================
+# 📌 DUYURU VE NÖBET (YENİ)
+# ==========================================
+if not df_ann.empty and df_ann.iloc[0]['message'].strip():
+    st.markdown(f"<div class='announcement-box'>📌 {df_ann.iloc[0]['message']}</div>", unsafe_allow_html=True)
+
+# Haftanın Nöbetçisi (Otomatik hesaplanır)
+hafta_no = datetime.now().isocalendar()[1]
+nobetci = EV_SAKINLERI[hafta_no % len(EV_SAKINLERI)]
+st.markdown(f"<div class='duty-box'>🧹 <b>Bu Haftanın Temizlik ve Çöp Nöbetçisi:</b> <span style='color:#4CAF50; font-size:1.2rem;'>{nobetci}</span></div>", unsafe_allow_html=True)
 
 # ==========================================
 # ⚡ 1. BÖLÜM: ENERJİ YÖNETİMİ
 # ==========================================
-st.title("🏠 Daire 6 Ortak Panel")
-
-if not df.empty:
+if not df_energy.empty:
     KESINTI_SINIRI = st.session_state['kesinti_siniri']
-    latest = df.iloc[-1]
-    curr_bal = latest['balance']
-    last_upd = latest['date_time']
-
-    if curr_bal >= 4000: percent = 100.0
-    elif curr_bal <= KESINTI_SINIRI: percent = 0.0
-    else: percent = ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100
+    latest = df_energy.iloc[-1]
+    curr_bal, last_upd = latest['balance'], latest['date_time']
+    percent = 100.0 if curr_bal >= 4000 else (0.0 if curr_bal <= KESINTI_SINIRI else ((curr_bal - KESINTI_SINIRI) / (4000 - KESINTI_SINIRI)) * 100)
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
     seven_days_ago = datetime.now() - timedelta(days=7)
-    recent_df = df[df['date_time'] >= seven_days_ago].copy()
-    avg_daily = 0
-    if len(recent_df) > 1:
-        recent_df['diff_cons'] = recent_df['balance'].diff()
-        drops = recent_df[recent_df['diff_cons'] < 0]['diff_cons'].abs()
-        days = (recent_df['date_time'].max() - recent_df['date_time'].min()).days or 1
-        avg_daily = drops.sum() / days
-
-    one_day_ago = last_upd - timedelta(hours=24.5)
-    last_24h_df = df[df['date_time'] >= one_day_ago].copy()
-    last_24h_cons = 0
-    if len(last_24h_df) > 1:
-        last_24h_df['diff_cons'] = last_24h_df['balance'].diff()
-        last_24h_cons = last_24h_df[last_24h_df['diff_cons'] < 0]['diff_cons'].abs().sum()
+    recent_df = df_energy[df_energy['date_time'] >= seven_days_ago].copy()
+    avg_daily = recent_df[recent_df['balance'].diff() < 0]['balance'].diff().abs().sum() / max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days) if len(recent_df) > 1 else 0
 
     usable_bal = max(0, curr_bal - KESINTI_SINIRI)
     days_left = usable_bal / avg_daily if avg_daily > 0 else 0
-    finish_date = datetime.now() + timedelta(days=days_left)
 
     st.markdown(f"""
         <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
@@ -197,87 +140,85 @@ if not df.empty:
                 <div style="width:{percent}%; height:100%; background:{color}; transition:1s;"></div>
             </div>
             <div style="margin-top:15px; font-size:2rem; font-weight:bold;">{int(curr_bal)} ₺</div>
-            <div style="color:#666; font-size:0.8rem;">Güncelleme: {last_upd.strftime('%H:%M')} | {last_upd.day} {TR_AYLAR[last_upd.month]}</div>
         </div>
     """, unsafe_allow_html=True)
+    
+    c1, c2 = st.columns(2)
+    with c1: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
+    with c2: st.metric("Tahmini Bitiş", f"{int(days_left)} Gün")
+st.write("---")
 
-    st.write("")
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
-    with c2: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
-    with c3: st.metric("Tahmini Bitiş", f"{int(days_left)} Gün")
+# ==========================================
+# 🛒 2. BÖLÜM: İHTİYAÇ LİSTESİ (YENİ)
+# ==========================================
+st.subheader("📝 Alınacaklar Listesi")
+with st.form("shop_form", clear_on_submit=True):
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1: s_item = st.text_input("Ne alınacak?", placeholder="Örn: Sıvı Sabun")
+    with col2: s_adder = st.selectbox("Ekleyen", EV_SAKINLERI, key="shop_adder")
+    with col3: 
+        st.write("")
+        s_submit = st.form_submit_button("Listeye Ekle", use_container_width=True)
+    if s_submit and s_item:
+        execute_query("INSERT INTO shopping_list (item_name, added_by) VALUES (%s, %s)", (s_item, s_adder))
+        clear_cache_all()
+        st.rerun()
+
+if not df_shop.empty:
+    for _, row in df_shop.iterrows():
+        colA, colB = st.columns([4, 1])
+        with colA: st.markdown(f"🛒 **{row['item_name']}** <span class='buyer-badge'>{row['added_by']}</span>", unsafe_allow_html=True)
+        with colB:
+            if st.button("Aldım ✅", key=f"buy_{row['id']}", use_container_width=True):
+                execute_query("DELETE FROM shopping_list WHERE id = %s", (row['id'],))
+                clear_cache_all()
+                st.rerun()
 else:
-    st.info("Sistemde henüz enerji verisi yok. Botun çalışması bekleniyor.")
+    st.info("Buzdolabı dolu, eksik yok! 😎")
 
 st.write("---")
 
 # ==========================================
-# 🛒 2. BÖLÜM: ORTAK HARCAMALAR (EXPENSES)
+# 💰 3. BÖLÜM: HARCAMALAR VE HESAPLAŞMA
 # ==========================================
-st.subheader("🛒 Ortak Ev Harcamaları")
+st.subheader("💸 Ev Ekonomisi & Hesaplaşma")
 
-with st.expander("➕ Yeni Harcama Ekle"):
+with st.expander("➕ Yeni Ev Harcaması Ekle"):
     with st.form("expense_form", clear_on_submit=True):
-        item_name = st.text_input("Alınan Ürün / Hizmet (Örn: Mutfak Alışverişi)")
-        item_price = st.number_input("Toplam Tutar (₺)", min_value=0.0, format="%.2f", step=10.0)
-        item_buyer = st.selectbox("Satın Alan Kişi", EV_SAKINLERI)
-        
-        submitted = st.form_submit_button("Listeye Ekle")
-        
-        if submitted:
-            if item_name and item_price > 0:
-                add_expense(item_name, item_price, item_buyer)
-                st.success(f"{item_name}, {item_buyer} tarafından eklendi!")
-                st.rerun() 
-            else:
-                st.warning("Lütfen ürün adı ve geçerli bir tutar girin.")
+        e_item = st.text_input("Alınan Ürün / Hizmet")
+        e_price = st.number_input("Tutar (₺)", min_value=0.0, format="%.2f", step=10.0)
+        e_buyer = st.selectbox("Ödeyen Kişi", EV_SAKINLERI)
+        if st.form_submit_button("Harcamalara Ekle"):
+            if e_item and e_price > 0:
+                execute_query("INSERT INTO expenses (date_time, item_name, price, buyer) VALUES (CURRENT_TIMESTAMP, %s, %s, %s)", (e_item, e_price, e_buyer))
+                clear_cache_all()
+                st.rerun()
 
 total_expense = df_exp['price'].sum() if not df_exp.empty else 0
-per_person = total_expense / 4
+per_person = total_expense / len(EV_SAKINLERI)
 
-st.markdown(f"""
-    <div class="expense-card">
-        <div style="color:#aaa; font-size:0.9rem;">Toplam Ev Harcaması</div>
-        <div style="font-size:1.8rem; font-weight:bold; margin-top:5px;">{total_expense:,.2f} ₺</div>
-        <div style="margin-top:10px; padding-top:10px; border-top:1px solid #333;">
-            <span style="color:#888; font-size:0.9rem;">Kişi Başı Düşen (4 Kişi): </span>
-            <span style="color:#2196F3; font-weight:bold; font-size:1.2rem;">{per_person:,.2f} ₺</span>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-if not df_exp.empty:
-    st.markdown('<div style="background:#161b22; border-radius:12px; padding:5px;">', unsafe_allow_html=True)
-    for _, row in df_exp.head(5).iterrows(): 
-        buyer_name = row.get('buyer', 'Bilinmiyor')
-        st.markdown(f"""
-            <div class="list-item">
-                <div>
-                    <div style="font-weight:bold;">
-                        {row['item_name']} 
-                        <span class="buyer-badge">👤 {buyer_name}</span>
-                    </div>
-                    <div class="text-muted">{row['date_time'].day} {TR_AYLAR[row['date_time'].month]} {row['date_time'].year}</div>
-                </div>
-                <div class="text-blue">{row['price']:,.2f} ₺</div>
-            </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+# AKILLI HESAPLAŞMA (SPLITWISE MANTIĞI)
+st.markdown("#### ⚖️ Kimin Kime Borcu Var?")
+if total_expense > 0:
+    balances = {person: -per_person for person in EV_SAKINLERI}
+    for buyer, amount in df_exp.groupby('buyer')['price'].sum().items():
+        if buyer in balances: balances[buyer] += amount
+        
+    for person, bal in balances.items():
+        if bal > 0.01: st.markdown(f"🟢 **{person}**: <span style='color:#4CAF50'>{bal:.2f} ₺ Alacaklı</span>", unsafe_allow_html=True)
+        elif bal < -0.01: st.markdown(f"🔴 **{person}**: <span style='color:#F44336'>{abs(bal):.2f} ₺ Borçlu</span>", unsafe_allow_html=True)
+        else: st.markdown(f"⚪ **{person}**: Ödeşildi", unsafe_allow_html=True)
 else:
-    st.info("Henüz ortak bir harcama girilmedi.")
+    st.info("Henüz harcama yok, herkesin cebi rahat.")
 
-# ==========================================
-# 📈 3. BÖLÜM: GRAFİKLER VE DİĞERLERİ
-# ==========================================
-if not df.empty:
-    st.write("---")
-    with st.expander("📊 Enerji Bakiye Akışı ve Son Yüklemeler"):
-        df['diff'] = df['balance'].diff()
-        recharges = df[df['diff'] > 20].copy().sort_values(by='date_time', ascending=False)
-        
-        st.area_chart(df.set_index('date_time')['balance'], height=200)
-        
-        if not recharges.empty:
-            st.markdown('**Son KIBTEK Yüklemeleri:**')
-            for _, row in recharges.head(3).iterrows():
-                st.markdown(f"- {row['date_time'].day} {TR_AYLAR[row['date_time'].month]}: **+{int(row['diff'])} ₺**")
+# Son Harcamalar Dökümü
+with st.expander("📋 Detaylı Harcama Dökümü (Son İşlemler)"):
+    if not df_exp.empty:
+        for _, row in df_exp.head(10).iterrows(): 
+            buyer_name = row.get('buyer', 'Bilinmiyor')
+            st.markdown(f"""
+                <div class="list-item">
+                    <div><b>{row['item_name']}</b> <span class="buyer-badge">👤 {buyer_name}</span></div>
+                    <div class="text-blue">{row['price']:,.2f} ₺</div>
+                </div>
+            """, unsafe_allow_html=True)
