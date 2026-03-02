@@ -31,7 +31,7 @@ def send_alert_email(bakiye, percent):
     subject = f"⚠️ KIBTEK Düşük Bakiye Uyarısı (%{percent:.1f})"
     body = (
         f"Merhaba,\n\n"
-        f"KIBTEK sayacınızdaki bakiye kritik seviyeye (%10 veya altı) ulaştı.\n\n"
+        f"KIBTEK Darire 6 sayacınızdaki bakiye kritik seviyeye (%10 veya altı) ulaştı.\n\n"
         f"Güncel Bakiye: {bakiye} TL\n"
         f"Doluluk Oranı: %{percent:.1f}\n\n"
         f"Lütfen kesinti yaşamamak için en kısa sürede yükleme yapınız.\n"
@@ -136,8 +136,8 @@ def main():
             else:
                 percent = 5 + ((bakiye - 500) / 3500) * 95
                 
-            if percent <= 50.0:
-                print("Bakiye %20 veya altına düştü! Uyarı maili tetikleniyor...")
+            if percent <= 10.0:
+                print("Bakiye %10 veya altına düştü! Uyarı maili tetikleniyor...")
                 send_alert_email(bakiye, percent)
                 
         except Exception as e:
@@ -147,6 +147,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
