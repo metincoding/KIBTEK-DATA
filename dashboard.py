@@ -163,7 +163,7 @@ EV_SAKINLERI = ["Metin", "Murat", "Zafer", "Mehmet"]
 with st.expander("➕ Yeni Harcama Ekle"):
     with st.form("expense_form", clear_on_submit=True):
         item_name = st.text_input("Alınan Ürün / Hizmet (Örn: Mutfak Alışverişi)")
-        item_price = st.number_input("Toplam Tutar (₺)", min_value=0.0, format="%.2f", step=20.0)
+        item_price = st.number_input("Toplam Tutar (₺)", min_value=0.0, format="%.2f", step=10.0)
         item_buyer = st.selectbox("Satın Alan Kişi", EV_SAKINLERI)
         
         submitted = st.form_submit_button("Listeye Ekle")
@@ -229,5 +229,6 @@ with st.expander("📊 Enerji Bakiye Akışı ve Son Yüklemeler"):
         st.markdown('**Son KIBTEK Yüklemeleri:**')
         for _, row in recharges.head(3).iterrows():
             st.markdown(f"- {row['date_time'].day} {TR_AYLAR[row['date_time'].month]}: **+{int(row['diff'])} ₺**")
+
 
 
