@@ -2,7 +2,7 @@ name: Kibtek Bakiye Scraper
 
 on:
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 10 * * *'
   workflow_dispatch: # İstediğimiz zaman manuel çalıştırma butonu ekler
 
 jobs:
