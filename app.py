@@ -1,153 +1,140 @@
-import os
-import time
+import streamlit as st
+import pandas as pd
 import psycopg2
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from datetime import datetime
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from datetime import datetime, timedelta
 
-# --- AYARLAR ---
-HESAP_NO = "00470913"
-URL = "https://online.kibtek.com/?lang=tr&t=prepaid"
+# --- PROFESYONEL AYARLAR ---
+st.set_page_config(page_title="Daire 6 Pro", page_icon="🏠", layout="wide")
 
-# GÜVENLİK
-DATABASE_URL = os.environ.get("DATABASE_URL")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
-SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
-RECEIVER_EMAIL = os.environ.get("RECEIVER_EMAIL")
+# Veritabanı Bağlantısı (Yardımcı Fonksiyon)
+def run_query(query, params=(), is_select=True):
+    conn = psycopg2.connect(st.secrets["DATABASE_URL"])
+    cur = conn.cursor()
+    cur.execute(query, params)
+    if is_select:
+        cols = [desc[0] for desc in cur.description]
+        res = pd.DataFrame(cur.fetchall(), columns=cols)
+        conn.close()
+        return res
+    conn.commit()
+    conn.close()
 
-def send_alert_email(bakiye, percent):
-    if not all([SENDER_EMAIL, SENDER_PASSWORD, RECEIVER_EMAIL]):
-        print("Mail ayarları eksik olduğu için uyarı gönderilemedi.")
-        return
+# --- AUTH LOGIC ---
+if 'user' not in st.session_state:
+    st.session_state.user = None
 
-    subject = f"⚠️ KIBTEK Düşük Bakiye Uyarısı (%{percent:.1f})"
-    body = (
-        f"Merhaba,\n\n"
-        f"KIBTEK Darire 6 sayacınızdaki bakiye kritik seviyeye (%10 veya altı) ulaştı.\n\n"
-        f"Güncel Bakiye: {bakiye} TL\n"
-        f"Doluluk Oranı: %{percent:.1f}\n\n"
-        f"Lütfen kesinti yaşamamak için en kısa sürede yükleme yapınız.\n"
-        f"Enerji Yönetim Paneli Botu"
-    )
-    
-    msg = MIMEMultipart()
-    msg['From'] = SENDER_EMAIL
-    msg['To'] = RECEIVER_EMAIL
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain', 'utf-8'))
-    
-    try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-        server.quit()
-        print("📧 Düşük bakiye uyarı e-postası başarıyla gönderildi!")
-    except Exception as e:
-        print(f"E-posta gönderme hatası: {e}")
-
-def get_balance():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new") 
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-    
-    try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-    except Exception as e:
-        print(f"Driver başlatma hatası: {e}")
-        return None
-    
-    try:
-        print("1. Siteye gidiliyor...")
-        driver.get(URL)
-        wait = WebDriverWait(driver, 20)
-
-        input_selector = "#__next > div > main > div > div:nth-child(5) > form > div > div > input"
-        input_box = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, input_selector)))
-        input_box.clear()
-        input_box.send_keys(HESAP_NO)
-        time.sleep(1)
-
-        btn_selector = "#__next > div > main > div > div:nth-child(5) > form > div > button"
-        devam_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, btn_selector)))
-        devam_btn.click()
-        
-        print("4. Sonuç sayfası bekleniyor...")
-        balance_selector = "#__next > div > main > div > div:nth-child(5) > form > div:nth-child(5) > div:nth-child(1) > p"
-        
-        balance_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, balance_selector)))
-        full_text = balance_element.text
-    
-        balance_str = ''.join(filter(lambda x: x.isdigit() or x == '.', full_text))
-        balance_str = balance_str.strip('.')
-        
-        if balance_str:
-            balance = int(float(balance_str)) 
-            return balance
-        else:
-            print("Sayısal veri ayrıştırılamadı!")
-            return None
-
-    except Exception as e:
-        print(f"HATA OLUŞTU: {e}")
-        return None
-    finally:
-        driver.quit()
-
-def main():
-    print("Program Başlıyor...")
-    
-    if not DATABASE_URL:
-        print("HATA: DATABASE_URL bulunamadı!")
-        return
-
-    bakiye = get_balance()
-    
-    if bakiye is not None:
-        try:
-            conn = psycopg2.connect(DATABASE_URL)
-            c = conn.cursor()
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            c.execute("INSERT INTO readings (date_time, account_no, balance) VALUES (%s, %s, %s)", 
-                      (now, HESAP_NO, bakiye))
-            conn.commit()
-            c.close()
-            conn.close()
-            print(f"\n✅ İŞLEM BAŞARILI!\nKayıt Zamanı: {now}\nKaydedilen Tutar: {bakiye} TL")
-            
-            # --- YÜZDE HESAPLAMA VE MAİL KONTROLÜ ---
-            if bakiye >= 4000:
-                percent = 100.0
-            elif bakiye <= 500:
-                percent = (bakiye / 500) * 5.0
+# ==========================================
+# 🔐 SIDEBAR: GİRİŞ VE YÖNETİM
+# ==========================================
+with st.sidebar:
+    st.title("👤 Kullanıcı Girişi")
+    if st.session_state.user is None:
+        u_name = st.text_input("Kullanıcı Adı")
+        u_pass = st.text_input("Şifre", type="password")
+        if st.button("Giriş Yap"):
+            user_check = run_query("SELECT * FROM users WHERE username = %s AND password = %s", (u_name, u_pass))
+            if not user_check.empty:
+                st.session_state.user = user_check.iloc[0].to_dict()
+                st.rerun()
             else:
-                percent = 5 + ((bakiye - 500) / 3500) * 95
-                
-            if percent <= 10.0:
-                print("Bakiye %10 veya altına düştü! Uyarı maili tetikleniyor...")
-                send_alert_email(bakiye, percent)
-                
-        except Exception as e:
-            print(f"Veritabanı kayıt hatası: {e}")
+                st.error("Hatalı giriş!")
     else:
-        print("\n❌ İŞLEM BAŞARISIZ.")
+        st.success(f"Hoş geldin, {st.session_state.user['username']}!")
+        if st.button("Çıkış Yap"):
+            st.session_state.user = None
+            st.rerun()
+        
+        # Admin Özel: Kullanıcı Yönetimi
+        if st.session_state.user['role'] == 'admin':
+            st.divider()
+            st.subheader("🛠️ Sistem Yönetimi")
+            if st.button("Tüm Datayı Resetle (Kritik)"):
+                run_query("TRUNCATE payments, expenses RESTART IDENTITY CASCADE", is_select=False)
+                st.rerun()
 
-if __name__ == "__main__":
-    main()
+# ==========================================
+# 📊 ANA SAYFA (INDEX) - HERKESE AÇIK (SALT OKUNUR)
+# ==========================================
+st.title("⚡ Daire 6 Ortak Yaşam Paneli")
 
+# 1. Enerji Kartları (Mevcut mantık korunuyor)
+# ... (KIBTEK Metrikleri Buraya Gelecek) ...
 
+st.divider()
 
+# 2. BORÇ MATRİSİ (KİMİN KİME NE KADAR BORCU VAR?)
+st.subheader("⚖️ Genel Borç Durumu")
+all_payments = run_query("SELECT p.*, u.username as payer_name FROM payments p JOIN users u ON p.payer_id = u.id WHERE p.status != 'paid'")
 
+if not all_payments.empty:
+    # Kim, kime, ne kadar borçlu özeti
+    summary = all_payments.groupby(['payer_name', 'receiver_id'])['amount'].sum().reset_index()
+    for _, row in summary.iterrows():
+        receiver = run_query("SELECT username FROM users WHERE id = %s", (int(row['receiver_id']),)).iloc[0]['username']
+        st.warning(f"🔴 **{row['payer_name']}**, {receiver}'e **{row['amount']:.2f} ₺** borçlu.")
+else:
+    st.success("🎉 Harika! Şu an kimsenin kimseye onaylanmamış borcu yok.")
+
+# ==========================================
+# 🔑 ÜYE ÖZEL ALANI (SADECE GİRİŞ YAPILINCA)
+# ==========================================
+if st.session_state.user:
+    st.divider()
+    tabs = st.tabs(["➕ Harcama Ekle", "💸 Borçlarım", "✅ Onay Bekleyenler"])
+    
+    # TAB 1: HARCAMA EKLEME
+    with tabs[0]:
+        with st.form("new_expense"):
+            item = st.text_input("Ürün Adı")
+            price = st.number_input("Toplam Tutar", min_value=0.0)
+            if st.form_submit_button("Harcamayı Kaydet ve Böl"):
+                # 1. Harcamayı kaydet
+                res = run_query("INSERT INTO expenses (item_name, price, buyer, date_time) VALUES (%s, %s, %s, NOW()) RETURNING id", 
+                                (item, price, st.session_state.user['username']), is_select=True)
+                exp_id = int(res.iloc[0]['id'])
+                
+                # 2. Diğer kullanıcılar için borç oluştur (4 kişi varsayımı)
+                other_users = run_query("SELECT id FROM users WHERE id != %s", (st.session_state.user['id'],))
+                share = price / 4
+                for _, u in other_users.iterrows():
+                    run_query("INSERT INTO payments (expense_id, payer_id, receiver_id, amount) VALUES (%s, %s, %s, %s)", 
+                              (exp_id, int(u['id']), st.session_state.user['id'], share), is_select=False)
+                st.success("Harcama eklendi ve borçlar paylaştırıldı!")
+                st.rerun()
+
+    # TAB 2: BORÇLARIM (ÖDEME YAPMA)
+    with tabs[1]:
+        my_debts = run_query("""
+            SELECT p.*, e.item_name, u.username as receiver_name 
+            FROM payments p 
+            JOIN expenses e ON p.expense_id = e.id 
+            JOIN users u ON p.receiver_id = u.id
+            WHERE p.payer_id = %s AND p.status = 'pending_payment'
+        """, (st.session_state.user['id'],))
+        
+        for _, d in my_debts.iterrows():
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"🛒 {d['item_name']} ({d['receiver_name']}'e) - **{d['amount']:.2f} ₺**")
+            if col2.button("Ödedim Bildir", key=f"pay_{d['id']}"):
+                run_query("UPDATE payments SET status = 'pending_approval' WHERE id = %s", (int(d['id']),), is_select=False)
+                st.rerun()
+
+    # TAB 3: ONAY BEKLEYENLER (ALACAKLI OLDUĞUM ÖDEMELER)
+    with tabs[2]:
+        my_approvals = run_query("""
+            SELECT p.*, e.item_name, u.username as payer_name 
+            FROM payments p 
+            JOIN expenses e ON p.expense_id = e.id 
+            JOIN users u ON p.payer_id = u.id
+            WHERE p.receiver_id = %s AND p.status = 'pending_approval'
+        """, (st.session_state.user['id'],))
+        
+        for _, a in my_approvals.iterrows():
+            col1, col2 = st.columns([3, 1])
+            col1.write(f"💰 {a['payer_name']} ödeme yaptığını bildirdi: **{a['amount']:.2f} ₺**")
+            if col2.button("Ödemeyi Onayla", key=f"app_{a['id']}"):
+                run_query("UPDATE payments SET status = 'paid' WHERE id = %s", (int(a['id']),), is_select=False)
+                st.rerun()
+
+else:
+    st.info("💡 Harcama eklemek veya ödemelerinizi yönetmek için soldan giriş yapın.")
