@@ -4,7 +4,7 @@ import psycopg2
 from datetime import datetime, timedelta
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Daire 6 Pro", page_icon="🏠", layout="centered")
+st.set_page_config(page_title="Daire 6 Smart", page_icon="🏠", layout="centered")
 
 TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
@@ -83,7 +83,7 @@ if df_energy is not None and not df_energy.empty:
 # ==========================================
 # ⚡ 1. BÖLÜM: ENERJİ DURUMU (GÖRSEL HATALAR ÇÖZÜLDÜ)
 # ==========================================
-st.title("🏠 Daire 6 Ortak Panel")
+st.title("🏠 Daire 6 Smart Home")
 
 if df_energy is not None and not df_energy.empty:
     curr_bal = float(df_energy.iloc[-1]['balance'])
