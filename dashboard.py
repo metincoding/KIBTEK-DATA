@@ -13,14 +13,19 @@ EV_SAKINLERI = ["Metin", "Zafer", "Murat", "Mehmet"]
 
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- GELİŞMİŞ CSS & ANİMASYON ---
+# --- GELİŞMİŞ CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
     .status-card { background: #1e1e1e; padding: 1.2rem; border-radius: 12px; border-left: 5px solid #4CAF50; margin-bottom: 1rem; }
     .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #222; background: #161b22; margin-bottom: 5px; border-radius: 8px; }
-    .debt-badge { background: #f44336; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; }
     
+    /* DURUM ROZETLERİ */
+    .status-badge { padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; color: black; }
+    .bg-red { background: #ff4b4b; }     /* ÖDEME BEKLENİYOR */
+    .bg-yellow { background: #ffea00; }  /* MAHSUPLAŞILDI */
+    .bg-green { background: #2ecc71; }   /* ÖDENDİ */
+
     @keyframes moveStripes { 0% { background-position: 0 0; } 100% { background-position: 40px 0; } }
     .energy-bar-fill {
         background-image: linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
@@ -57,7 +62,7 @@ with st.sidebar:
             if user_check is not None and not user_check.empty:
                 st.session_state.user = user_check.iloc[0].to_dict()
                 st.rerun()
-            else: st.error("Hatalı İsim veya Şifre!")
+            else: st.error("Hatalı Giriş!")
     else:
         st.success(f"Hoş geldin, {st.session_state.user['username']}")
         if st.button("Çıkış Yap", use_container_width=True):
@@ -77,15 +82,21 @@ if df_energy is not None and not df_energy.empty:
     df_energy['date_time'] = pd.to_datetime(df_energy['date_time'])
 
 # ==========================================
-# 📊 ANA SAYFA (INDEX - READ ONLY)
+# 📊 ANA SAYFA (INDEX)
 # ==========================================
 st.title("⚡ Daire 6 Ortak Panel")
 
-# 1. ENERJİ DURUMU
+# 1. ENERJİ DURUMU (HATA DÜZELTMELİ)
 if df_energy is not None and not df_energy.empty:
     curr_bal = float(df_energy.iloc[-1]['balance'])
     percent = max(0.0, min(100.0, ((curr_bal - 300) / 3700) * 100))
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
+    
+    # Kalan Gün Tahmini
+    recent_df = df_energy[df_energy['date_time'] >= (datetime.now() - timedelta(days=7))].copy()
+    avg_daily = recent_df[recent_df['balance'].diff() < 0]['balance'].diff().abs().sum() / max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days) if len(recent_df) > 1 else 0
+    days_left = int(max(0, curr_bal - 300) / avg_daily) if avg_daily > 0 else 0
+    tahmini_tarih = datetime.now() + timedelta(days=days_left)
 
     st.markdown(f"""
         <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
@@ -97,15 +108,20 @@ if df_energy is not None and not df_energy.empty:
                 <div class="energy-bar-fill" style="width:{percent}%; height:100%; background-color:{color};"></div>
             </div>
             <div style="margin-top:15px; font-size:2.2rem; font-weight:bold;">{int(curr_bal)} ₺</div>
+            <div style="color:#888; font-size:0.8rem; margin-top:5px;">Tahmini Kesinti: {tahmini_tarih.day} {TR_AYLAR[tahmini_tarih.month]} ({days_left} Gün)</div>
         </div>
     """, unsafe_allow_html=True)
 
 st.divider()
 
-# 2. BORÇ DURUMU VE DETAYLAR
-st.subheader("⚖️ Güncel Borç Listesi")
-all_debts = run_query("""
-    SELECT p.*, u.username as payer_name, r.username as receiver_name, e.item_name, e.date_time as exp_date
+# ==========================================
+# ⚖️ AKILLI MAHSUPLAŞMA MANTIĞI
+# ==========================================
+st.subheader("⚖️ Akıllı Hesaplaşma ve Net Borçlar")
+
+# Tüm ödenmemiş borçları çek
+all_pending = run_query("""
+    SELECT p.*, u.username as payer_name, r.username as receiver_name, e.item_name
     FROM payments p 
     JOIN users u ON p.payer_id = u.id 
     JOIN users r ON p.receiver_id = r.id 
@@ -113,22 +129,70 @@ all_debts = run_query("""
     WHERE p.status = 'pending_payment'
 """)
 
-if all_debts is not None and not all_debts.empty:
-    for _, row in all_debts.iterrows():
+if all_pending is not None and not all_pending.empty:
+    # 1. Matris Oluştur: Kimin kime ne kadar toplam borcu var?
+    matrix = all_pending.groupby(['payer_name', 'receiver_name'])['amount'].sum().reset_index()
+    
+    # 2. Mahsuplaşma Kartını Göster
+    processed_pairs = set()
+    st.markdown("#### 🔄 Karşılıklı Ödeşme Durumu")
+    
+    for _, row in matrix.iterrows():
+        p1, p2 = row['payer_name'], row['receiver_name']
+        pair = tuple(sorted((p1, p2)))
+        if pair in processed_pairs: continue
+        processed_pairs.add(pair)
+        
+        # Karşılıklı tutarları bul
+        p1_to_p2 = matrix[(matrix['payer_name'] == p1) & (matrix['receiver_name'] == p2)]['amount'].sum()
+        p2_to_p1 = matrix[(matrix['payer_name'] == p2) & (matrix['receiver_name'] == p1)]['amount'].sum()
+        
+        mahsuplasildi = min(p1_to_p2, p2_to_p1)
+        
+        if mahsuplasildi > 0:
+            st.markdown(f"""
+                <div class='list-item'>
+                    <div>🤝 <b>{p1} & {p2}</b></div>
+                    <div style='text-align:right'>
+                        <span class='status-badge bg-yellow'>MAHSUPLAŞILDI</span><br>
+                        <small style='color:#2ecc71'>-{int(mahsuplasildi)} ₺ mahsup edildi</small>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Net durumu yazdır
+            diff = p1_to_p2 - p2_to_p1
+            if diff > 0: st.caption(f"👉 Kalan: **{p1}**, {p2}'ye **{int(diff)} ₺** ödeyecek.")
+            elif diff < 0: st.caption(f"👉 Kalan: **{p2}**, {p1}'ye **{int(abs(diff))} ₺** ödeyecek.")
+            else: st.caption("👉 Durum: **Tamamen Ödeşildi!**")
+
+    st.divider()
+    
+    # 3. Detaylı Hareket Listesi (3 Renk Durumu)
+    st.markdown("#### 📜 Harcama Detayları")
+    for _, row in all_pending.iterrows():
+        # Bu harcama mahsuplaşmaya dahil mi? (Basit gösterim için)
+        is_offset = False
+        # Karşı taraftan bu kişiye borç var mı bakıyoruz
+        opp_debt = matrix[(matrix['payer_name'] == row['receiver_name']) & (matrix['receiver_name'] == row['payer_name'])]['amount'].sum()
+        
+        badge_class = "bg-yellow" if opp_debt > 0 else "bg-red"
+        status_text = "MAHSUPLAŞILDI" if opp_debt > 0 else "ÖDEME BEKLENİYOR"
+        
         st.markdown(f"""
             <div class='list-item'>
                 <div>
                     <b>{row['payer_name']}</b> ➔ {row['receiver_name']}<br>
-                    <small style='color:#888'>{row['item_name']} (Ekleme: {row['exp_date'].strftime('%d %b')})</small>
+                    <small style='color:#888'>{row['item_name']}</small>
                 </div>
                 <div style='text-align:right'>
-                    <span class='debt-badge'>ÖDEME BEKLENİYOR</span><br>
-                    <b style='color:#f44336'>{row['amount']:.2f} ₺</b>
+                    <span class='status-badge {badge_class}'>{status_text}</span><br>
+                    <b>{int(row['amount'])} ₺</b>
                 </div>
             </div>
         """, unsafe_allow_html=True)
 else:
-    st.success("Tüm ödemeler yapıldı, kimsenin borcu yok! 😇")
+    st.success("Tüm ödemeler tamamlanmış! 😇")
 
 # ==========================================
 # 🔐 YETKİLİ ALAN (GİRİŞ ŞART)
@@ -140,54 +204,54 @@ if st.session_state.user:
 
     with tab1:
         with st.form("add_exp", clear_on_submit=True):
-            item_name = st.text_input("Ne alındı? (Örn: Mutfak Alışverişi)")
-            total_price = st.number_input("Toplam Tutar (₺)", min_value=0.0)
-            if st.form_submit_button("Kaydet ve 4'e Böl"):
+            item_name = st.text_input("Ürün/Hizmet")
+            total_price = st.number_input("Tutar (₺)", min_value=0.0)
+            if st.form_submit_button("Harcamayı Böl"):
                 if item_name and total_price > 0:
-                    # Tek bir işlemde harcama ve borçları ekle
                     conn = psycopg2.connect(st.secrets["DATABASE_URL"])
                     cur = conn.cursor()
                     try:
-                        cur.execute("INSERT INTO expenses (item_name, price, buyer, date_time) VALUES (%s, %s, %s, NOW()) RETURNING id", 
-                                    (item_name, total_price, st.session_state.user['username']))
+                        cur.execute("INSERT INTO expenses (item_name, price, buyer, date_time) VALUES (%s, %s, %s, NOW()) RETURNING id", (item_name, total_price, st.session_state.user['username']))
                         exp_id = cur.fetchone()[0]
                         share = total_price / 4
                         for name in EV_SAKINLERI:
                             if name != st.session_state.user['username']:
-                                cur.execute("INSERT INTO payments (expense_id, payer_id, receiver_id, amount) VALUES (%s, (SELECT id FROM users WHERE username=%s), (SELECT id FROM users WHERE username=%s), %s)", 
-                                            (exp_id, name, st.session_state.user['username'], share))
+                                cur.execute("INSERT INTO payments (expense_id, payer_id, receiver_id, amount) VALUES (%s, (SELECT id FROM users WHERE username=%s), (SELECT id FROM users WHERE username=%s), %s)", (exp_id, name, st.session_state.user['username'], share))
                         conn.commit()
-                        st.success("Harcama eklendi, borçlar paylaştırıldı!")
+                        st.success("İşlendi!")
                         st.rerun()
                     except Exception as e:
                         conn.rollback()
-                        st.error(f"Hata oluştu: {e}")
+                        st.error(f"Hata: {e}")
                     finally: conn.close()
 
     with tab2:
+        # Ödenen kısımların yeşil görünmesi için status 'paid' yapılır
         my_debts = run_query("""
             SELECT p.id, p.amount, e.item_name, r.username as receiver_name 
-            FROM payments p 
-            JOIN expenses e ON p.expense_id = e.id 
-            JOIN users r ON p.receiver_id = r.id 
+            FROM payments p JOIN expenses e ON p.expense_id = e.id JOIN users r ON p.receiver_id = r.id 
             WHERE p.payer_id = %s AND p.status = 'pending_payment'
         """, (int(st.session_state.user['id']),))
         
         if my_debts is not None and not my_debts.empty:
             for _, d in my_debts.iterrows():
                 col1, col2 = st.columns([3, 1])
-                col1.write(f"🛒 **{d['item_name']}**<br><small>{d['receiver_name']}'e ödenecek</small>", unsafe_allow_html=True)
-                if col2.button(f"{int(d['amount'])} ₺ Ödedim ✅", key=f"pay_{d['id']}", use_container_width=True):
+                col1.write(f"🛒 **{d['item_name']}** ({d['receiver_name']})")
+                if col2.button(f"{int(d['amount'])} ₺ Ödedim", key=f"p_{d['id']}"):
                     run_query("UPDATE payments SET status = 'paid' WHERE id = %s", (int(d['id']),), is_select=False)
-                    st.success("Ödeme tamamlandı!")
                     st.rerun()
-        else:
-            st.info("Şu an ödemen gereken bir borç yok. 😎")
 
 # ==========================================
-# 📈 ENERJİ GRAFİĞİ (SAYFA SONU)
+# 📈 ENERJİ GRAFİĞİ (DÜZELTİLDİ)
 # ==========================================
 st.write("---")
-st.subheader("📊 Enerji Kullanım Grafiği")
+st.subheader("📊 Enerji Grafiği ve Yüklemeler")
 if df_energy is not None and not df_energy.empty:
     st.area_chart(df_energy.set_index('date_time')['balance'], height=200)
+    
+    # Yüklemeler
+    df_energy['diff'] = df_energy['balance'].diff()
+    recharges = df_energy[df_energy['diff'] > 20].copy().sort_values(by='date_time', ascending=False)
+    if not recharges.empty:
+        for _, row in recharges.head(3).iterrows():
+            st.markdown(f"<span style='color:#2ecc71'>✅ **{row['date_time'].day} {TR_AYLAR[row['date_time'].month]}**: +{int(row['diff'])} ₺ Yükleme (ÖDENDİ)</span>", unsafe_allow_html=True)
