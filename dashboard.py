@@ -80,7 +80,7 @@ if df_energy is not None and not df_energy.empty:
     df_energy['date_time'] = pd.to_datetime(df_energy['date_time'])
 
 # ==========================================
-# ⚡ 1. BÖLÜM: ENERJİ DURUMU (METRİKLER GERİ GELDİ)
+# ⚡ 1. BÖLÜM: ENERJİ DURUMU 
 # ==========================================
 st.title("🏠 Daire 6 Ortak Panel")
 
@@ -90,11 +90,10 @@ if df_energy is not None and not df_energy.empty:
     percent = max(0.0, min(100.0, ((curr_bal - 300) / 3700) * 100))
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
     
-    # Kalan Gün Tahmini & Ortalama
+    # Metrik Hesaplamaları
     recent_df = df_energy[df_energy['date_time'] >= (datetime.now() - timedelta(days=7))].copy()
     avg_daily = recent_df[recent_df['balance'].diff() < 0]['balance'].diff().abs().sum() / max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days) if len(recent_df) > 1 else 1
     
-    # Son 24 Saat Tüketimi
     one_day_ago = last_upd - timedelta(hours=24.5)
     last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago].copy()
     last_24h_cons = float(last_24h_df[last_24h_df['balance'].diff() < 0]['balance'].diff().abs().sum()) if len(last_24h_df) > 1 else 0
@@ -115,7 +114,6 @@ if df_energy is not None and not df_energy.empty:
         </div>
     """, unsafe_allow_html=True)
 
-    # ALT METRİKLER (İstediğin Gibi Geri Döndü)
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
     with c2: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
@@ -128,7 +126,6 @@ st.divider()
 # ==========================================
 st.subheader("⚖️ Güncel Borç / Mahsuplaşma Listesi")
 
-# pending_payment durumundaki borçlar (Onay süreci kalktı)
 payments = run_query("""
     SELECT p.*, u.username as payer, r.username as receiver, e.item_name, e.date_time as date
     FROM payments p JOIN users u ON p.payer_id = u.id JOIN users r ON p.receiver_id = r.id JOIN expenses e ON p.expense_id = e.id
@@ -138,7 +135,7 @@ payments = run_query("""
 if not payments.empty:
     net_matrix = payments.groupby(['payer', 'receiver'])['amount'].sum().reset_index()
     
-    # 🔴 NAKİT ÖDEME BEKLENİYOR (Gerçek Borçlar)
+    # 🔴 NAKİT ÖDEME BEKLENİYOR
     st.markdown("#### 🔴 Nakit Ödeme Bekleyenler")
     processed_pairs = set()
     for _, row in net_matrix.iterrows():
@@ -171,11 +168,14 @@ else:
     st.success("Herkes ödeşmiş, bekleyen borç yok! ✨")
 
 # ==========================================
-# 🛠️ 3. BÖLÜM: KULLANICI İŞLEMLERİ
+# 🛠️ 3. BÖLÜM: KULLANICI İŞLEMLERİ (NET HESAPLAŞMA)
 # ==========================================
 if st.session_state.user:
     st.divider()
-    st.subheader(f"🛠️ Kullanıcı Paneli: {st.session_state.user['username']}")
+    my_name = st.session_state.user['username']
+    my_id = int(st.session_state.user['id'])
+    
+    st.subheader(f"🛠️ Kullanıcı Paneli: {my_name}")
     t1, t2, t3 = st.tabs(["➕ Harcama", "💸 Borçlarım", "🏦 Alacaklarım"])
 
     with t1:
@@ -187,12 +187,12 @@ if st.session_state.user:
                     conn = psycopg2.connect(st.secrets["DATABASE_URL"])
                     cur = conn.cursor()
                     try:
-                        cur.execute("INSERT INTO expenses (item_name, price, buyer, date_time) VALUES (%s, %s, %s, NOW()) RETURNING id", (item, price, st.session_state.user['username']))
+                        cur.execute("INSERT INTO expenses (item_name, price, buyer, date_time) VALUES (%s, %s, %s, NOW()) RETURNING id", (item, price, my_name))
                         exp_id = cur.fetchone()[0]
                         share = price / 4
                         for name in EV_SAKINLERI:
-                            if name != st.session_state.user['username']:
-                                cur.execute("INSERT INTO payments (expense_id, payer_id, receiver_id, amount, status) VALUES (%s, (SELECT id FROM users WHERE username=%s), (SELECT id FROM users WHERE username=%s), %s, 'pending_payment')", (exp_id, name, st.session_state.user['username'], share))
+                            if name != my_name:
+                                cur.execute("INSERT INTO payments (expense_id, payer_id, receiver_id, amount, status) VALUES (%s, (SELECT id FROM users WHERE username=%s), (SELECT id FROM users WHERE username=%s), %s, 'pending_payment')", (exp_id, name, my_name, share))
                         conn.commit()
                         st.success("İşlendi!")
                         st.rerun()
@@ -200,31 +200,57 @@ if st.session_state.user:
                     finally: conn.close()
 
     with t2:
-        # Kişi sadece borçlarını GÖRÜR, işlem yapamaz.
-        st.write("Başkalarına ödemen gereken borçlar (Parayı verdikten sonra alacaklıdan onaylamasını iste):")
-        my_debts = run_query("SELECT p.id, p.amount, r.username as receiver, e.item_name FROM payments p JOIN expenses e ON p.expense_id = e.id JOIN users r ON p.receiver_id = r.id WHERE p.payer_id = %s AND p.status = 'pending_payment'", (int(st.session_state.user['id']),))
-        if not my_debts.empty:
-            for _, d in my_debts.iterrows():
-                st.markdown(f"<div class='list-item'><div>🛒 <b>{d['item_name']}</b><br><small>{d['receiver']}'e ödenecek</small></div><div><b>{int(d['amount'])} ₺</b></div></div>", unsafe_allow_html=True)
+        st.write("Başkalarına olan **NET** borçlarınız (Ödemeyi yaptıktan sonra karşı taraftan onaylamasını isteyin):")
+        if not payments.empty:
+            borclar = {}
+            for name in EV_SAKINLERI:
+                if name == my_name: continue
+                they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
+                i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
+                net_debt = i_owe_them - they_owe_me
+                if net_debt > 0:
+                    borclar[name] = net_debt
+            
+            if borclar:
+                for name, net_amount in borclar.items():
+                    st.markdown(f"<div class='list-item'><div>👤 <b>{name}</b> kişisine net borcunuz:</div><div><b style='color:#f44336'>{int(net_amount)} ₺</b></div></div>", unsafe_allow_html=True)
+            else:
+                st.info("Kimseye net borcunuz yok, rahatsınız!")
         else:
-            st.info("Kimseye borcun yok, rahatsın!")
+            st.info("Kimseye net borcunuz yok, rahatsınız!")
 
     with t3:
-        # SADECE ALACAKLI BUTONA BASABİLİR
-        st.write("Sana olan borçlarını ödeyenleri buradan onayla ve sil:")
-        my_collects = run_query("SELECT p.id, p.amount, u.username as payer, e.item_name FROM payments p JOIN expenses e ON p.expense_id = e.id JOIN users u ON p.payer_id = u.id WHERE p.receiver_id = %s AND p.status = 'pending_payment'", (int(st.session_state.user['id']),))
-        if not my_collects.empty:
-            for _, c in my_collects.iterrows():
-                col1, col2 = st.columns([3, 1])
-                col1.write(f"💰 **{c['payer']}**, sana **{int(c['amount'])} ₺** ödedi mi?<br><small>({c['item_name']})</small>", unsafe_allow_html=True)
-                # Alacaklı "Tahsil Ettim" dediği an status = 'paid' olur ve listeden kalkar.
-                if col2.button("Tahsil Ettim ✅", key=f"coll_{c['id']}"):
-                    run_query("UPDATE payments SET status = 'paid' WHERE id = %s", (int(c['id']),), is_select=False)
-                    st.rerun()
-        else: st.write("Kimseden bekleyen bir alacağın yok.")
+        st.write("Sana olan net borcunu ödeyenleri buradan onayla ve sil:")
+        if not payments.empty:
+            alacaklar = {}
+            for name in EV_SAKINLERI:
+                if name == my_name: continue
+                they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
+                i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
+                net_credit = they_owe_me - i_owe_them
+                if net_credit > 0:
+                    alacaklar[name] = net_credit
+            
+            if alacaklar:
+                for name, net_amount in alacaklar.items():
+                    col1, col2 = st.columns([3, 1])
+                    col1.write(f"💰 **{name}**, tüm mahsuplaşmalar düşüldükten sonra sana net **{int(net_amount)} ₺** borçlu.", unsafe_allow_html=True)
+                    # Tahsil Ettim butonuna basıldığında, bu iki kişi arasındaki TÜM bekleyen işlemler "paid" yapılır.
+                    if col2.button("Tahsil Ettim ✅", key=f"coll_{name}"):
+                        run_query("""
+                            UPDATE payments SET status = 'paid' 
+                            WHERE status = 'pending_payment' 
+                            AND ((payer_id = (SELECT id FROM users WHERE username=%s) AND receiver_id = %s) 
+                              OR (payer_id = %s AND receiver_id = (SELECT id FROM users WHERE username=%s)))
+                        """, (name, my_id, my_id, name), is_select=False)
+                        st.rerun()
+            else:
+                st.write("Kimseden net bir alacağın kalmamış.")
+        else:
+            st.write("Kimseden net bir alacağın kalmamış.")
 
 # ==========================================
-# 📈 4. BÖLÜM: ENERJİ GRAFİĞİ
+# 📈 4. BÖLÜM: ENERJİ GRAFİĞİ 
 # ==========================================
 st.divider()
 st.subheader("📊 Enerji Kullanım Grafiği")
