@@ -168,7 +168,7 @@ else:
     st.success("Herkes ödeşmiş, bekleyen borç yok! ✨")
 
 # ==========================================
-# 🛠️ 3. BÖLÜM: KULLANICI İŞLEMLERİ (NET HESAPLAŞMA)
+# 🛠️ 3. BÖLÜM: KULLANICI İŞLEMLERİ 
 # ==========================================
 if st.session_state.user:
     st.divider()
@@ -208,16 +208,13 @@ if st.session_state.user:
                 they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
                 i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
                 net_debt = i_owe_them - they_owe_me
-                if net_debt > 0:
-                    borclar[name] = net_debt
+                if net_debt > 0: borclar[name] = net_debt
             
             if borclar:
                 for name, net_amount in borclar.items():
                     st.markdown(f"<div class='list-item'><div>👤 <b>{name}</b> kişisine net borcunuz:</div><div><b style='color:#f44336'>{int(net_amount)} ₺</b></div></div>", unsafe_allow_html=True)
-            else:
-                st.info("Kimseye net borcunuz yok, rahatsınız!")
-        else:
-            st.info("Kimseye net borcunuz yok, rahatsınız!")
+            else: st.info("Kimseye net borcunuz yok, rahatsınız!")
+        else: st.info("Kimseye net borcunuz yok, rahatsınız!")
 
     with t3:
         st.write("Sana olan net borcunu ödeyenleri buradan onayla ve sil:")
@@ -228,14 +225,12 @@ if st.session_state.user:
                 they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
                 i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
                 net_credit = they_owe_me - i_owe_them
-                if net_credit > 0:
-                    alacaklar[name] = net_credit
+                if net_credit > 0: alacaklar[name] = net_credit
             
             if alacaklar:
                 for name, net_amount in alacaklar.items():
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"💰 **{name}**, tüm mahsuplaşmalar düşüldükten sonra sana net **{int(net_amount)} ₺** borçlu.", unsafe_allow_html=True)
-                    # Tahsil Ettim butonuna basıldığında, bu iki kişi arasındaki TÜM bekleyen işlemler "paid" yapılır.
                     if col2.button("Tahsil Ettim ✅", key=f"coll_{name}"):
                         run_query("""
                             UPDATE payments SET status = 'paid' 
@@ -244,10 +239,8 @@ if st.session_state.user:
                               OR (payer_id = %s AND receiver_id = (SELECT id FROM users WHERE username=%s)))
                         """, (name, my_id, my_id, name), is_select=False)
                         st.rerun()
-            else:
-                st.write("Kimseden net bir alacağın kalmamış.")
-        else:
-            st.write("Kimseden net bir alacağın kalmamış.")
+            else: st.write("Kimseden net bir alacağın kalmamış.")
+        else: st.write("Kimseden net bir alacağın kalmamış.")
 
 # ==========================================
 # 📈 4. BÖLÜM: ENERJİ GRAFİĞİ 
@@ -256,3 +249,77 @@ st.divider()
 st.subheader("📊 Enerji Kullanım Grafiği")
 if df_energy is not None and not df_energy.empty:
     st.area_chart(df_energy.set_index('date_time')['balance'], height=250)
+
+# ==========================================
+# 📜 5. BÖLÜM: SİSTEM LOGLARI (BÜTÜN HAREKETLER)
+# ==========================================
+st.divider()
+st.subheader("📜 Sistem Logları (Son Hareketler)")
+
+log_events = []
+
+# 1. Ev Harcamaları (Eksi Bakiye - Kırmızı)
+df_all_expenses = run_query("SELECT item_name, price, buyer, date_time FROM expenses")
+if df_all_expenses is not None and not df_all_expenses.empty:
+    for _, row in df_all_expenses.iterrows():
+        log_events.append({
+            'date': pd.to_datetime(row['date_time']),
+            'icon': '🛒',
+            'title': f"Harcama: {row['item_name']} ({row['buyer']})",
+            'amount': -float(row['price']),
+            'color': '#ff4b4b' 
+        })
+
+# 2. Enerji İşlemleri
+if df_energy is not None and not df_energy.empty:
+    df_energy['diff'] = df_energy['balance'].diff()
+    
+    # Yüklemeler (Artı Bakiye - Yeşil)
+    recharges = df_energy[df_energy['diff'] > 20]
+    for _, row in recharges.iterrows():
+        log_events.append({
+            'date': pd.to_datetime(row['date_time']),
+            'icon': '⚡',
+            'title': 'KIBTEK Yükleme',
+            'amount': float(row['diff']),
+            'color': '#2ecc71' 
+        })
+        
+    # Günlük Enerji Tüketimleri (Eksi Bakiye - Turuncu)
+    df_energy['date_only'] = df_energy['date_time'].dt.date
+    daily_drops = df_energy[df_energy['diff'] < 0].groupby('date_only')['diff'].sum()
+    for date_val, drop_val in daily_drops.items():
+        dt_val = pd.to_datetime(date_val) + pd.Timedelta(hours=23, minutes=59) # Gün sonu olarak kaydet
+        if abs(drop_val) > 0:
+            log_events.append({
+                'date': dt_val,
+                'icon': '🔌',
+                'title': 'KIBTEK Günlük Tüketim',
+                'amount': float(drop_val),
+                'color': '#ff9800' 
+            })
+
+# Logları tarihe göre en yeniden eskiye sırala
+log_events.sort(key=lambda x: x['date'], reverse=True)
+
+if log_events:
+    st.markdown('<div style="background:#161b22; border-radius:12px; padding:10px;">', unsafe_allow_html=True)
+    # Sadece en güncel 20 hareketi göster (Ekranı boğmamak için)
+    for ev in log_events[:20]:
+        amt_str = f"+{ev['amount']:.2f} ₺" if ev['amount'] > 0 else f"{ev['amount']:.2f} ₺"
+        date_str = f"{ev['date'].day} {TR_AYLAR[ev['date'].month]} {ev['date'].strftime('%H:%M')}"
+        st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #2a2e33;">
+                <div>
+                    <span style="font-size:1.2rem; margin-right:10px;">{ev['icon']}</span>
+                    <span style="font-weight:bold; color:#ddd;">{ev['title']}</span><br>
+                    <small style="color:#888; margin-left:35px;">{date_str}</small>
+                </div>
+                <div style="font-weight:bold; color:{ev['color']}; font-size:1.1rem;">
+                    {amt_str}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    st.info("Sistemde henüz kaydedilmiş bir hareket bulunmuyor.")
