@@ -115,7 +115,7 @@ if df_energy is not None and not df_energy.empty:
     st.markdown(f"""
         <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                <span style="color:#aaa;">KIBTEK Enerji Bakiye</span>
+                <span style="color:#aaa;">Kalan Enerji Bakiye</span>
                 <span style="font-weight:bold; color:{color};">%{percent:.1f}</span>
             </div>
             <div style="width:100%; height:25px; background:#333; border-radius:20px; overflow:hidden;">
@@ -163,7 +163,7 @@ if not payments.empty:
         elif diff < 0:
             st.markdown(f"<div class='list-item'><div><b>{p2}</b> ➔ {p1}</div><div style='text-align:right'><span class='status-badge bg-red'>ÖDEME BEKLENİYOR</span><br><b>{int(abs(diff))} ₺</b></div></div>", unsafe_allow_html=True)
 
-    st.markdown("#### 🟡 Mahsuplaşan Harcamalar")
+    st.markdown("#### 🟡 Otomatik Mahsuplaşma")
     for _, row in payments.iterrows():
         opp_amt = net_matrix[(net_matrix['payer'] == row['receiver']) & (net_matrix['receiver'] == row['payer'])]['amount'].sum()
         if opp_amt > 0:
@@ -312,7 +312,7 @@ if df_energy is not None and not df_energy.empty:
             log_events.append({
                 'date': dt_val,
                 'icon': '🔌',
-                'title': 'KIBTEK Günlük Tüketim',
+                'title': 'Elektrik Günlük Tüketi',
                 'amount': float(drop_val),
                 'color': '#ff9800' 
             })
