@@ -90,15 +90,37 @@ if df_energy is not None and not df_energy.empty:
     percent = max(0.0, min(100.0, ((curr_bal - 300) / 3700) * 100))
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
     
-    # Metrik Hesaplamaları
-    recent_df = df_energy[df_energy['date_time'] >= (datetime.now() - timedelta(days=7))].copy()
-    avg_daily = recent_df[recent_df['balance'].diff() < 0]['balance'].diff().abs().sum() / max(1, (recent_df['date_time'].max() - recent_df['date_time'].min()).days) if len(recent_df) > 1 else 1
+    # ----------------------------------------
+    # HASSAS METRİK HESAPLAMALARI (DÜZELTİLDİ)
+    # ----------------------------------------
     
-    one_day_ago = last_upd - timedelta(hours=24.5)
-    last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago].copy()
-    last_24h_cons = float(last_24h_df[last_24h_df['balance'].diff() < 0]['balance'].diff().abs().sum()) if len(last_24h_df) > 1 else 0
+    # 1. Günlük Ortalama (Son 7 Günlük Veri)
+    seven_days_ago = last_upd - timedelta(days=7)
+    recent_df = df_energy[df_energy['date_time'] >= seven_days_ago].copy()
+    
+    avg_daily = 0.0
+    if len(recent_df) > 1:
+        drops = recent_df['balance'].diff()
+        total_drop = float(drops[drops < 0].abs().sum())
+        # Saniyeler üzerinden kesin küsuratlı gün hesabı yapılıyor
+        time_span_days = (recent_df['date_time'].max() - recent_df['date_time'].min()).total_seconds() / 86400.0
+        if time_span_days > 0:
+            avg_daily = total_drop / max(1.0, time_span_days)
+        else:
+            avg_daily = total_drop
 
-    days_left = int(max(0, curr_bal - 300) / avg_daily)
+    # 2. Son 24 Saat Tüketimi (Gecikme toleranslı 28 Saatlik Pencere)
+    window_24h = last_upd - timedelta(hours=28)
+    last_24h_df = df_energy[df_energy['date_time'] >= window_24h].copy()
+    
+    if len(last_24h_df) > 1:
+        drops_24 = last_24h_df['balance'].diff()
+        last_24h_cons = float(drops_24[drops_24 < 0].abs().sum())
+    else:
+        last_24h_cons = 0.0
+
+    # 3. Kalan Gün Tahmini
+    days_left = int(max(0, curr_bal - 300) / avg_daily) if avg_daily > 0 else 0
     kesinti_tarihi = datetime.now() + timedelta(days=days_left)
 
     st.markdown(f"""
@@ -135,7 +157,6 @@ payments = run_query("""
 if not payments.empty:
     net_matrix = payments.groupby(['payer', 'receiver'])['amount'].sum().reset_index()
     
-    # 🔴 NAKİT ÖDEME BEKLENİYOR
     st.markdown("#### 🔴 Nakit Ödeme Bekleyenler")
     processed_pairs = set()
     for _, row in net_matrix.iterrows():
@@ -153,7 +174,6 @@ if not payments.empty:
         elif diff < 0:
             st.markdown(f"<div class='list-item'><div><b>{p2}</b> ➔ {p1}</div><div style='text-align:right'><span class='status-badge bg-red'>ÖDEME BEKLENİYOR</span><br><b>{int(abs(diff))} ₺</b></div></div>", unsafe_allow_html=True)
 
-    # 🟡 MAHSUPLAŞILAN İŞLEMLER
     st.markdown("#### 🟡 Mahsuplaşan Harcamalar")
     for _, row in payments.iterrows():
         opp_amt = net_matrix[(net_matrix['payer'] == row['receiver']) & (net_matrix['receiver'] == row['payer'])]['amount'].sum()
@@ -251,14 +271,14 @@ if df_energy is not None and not df_energy.empty:
     st.area_chart(df_energy.set_index('date_time')['balance'], height=250)
 
 # ==========================================
-# 📜 5. BÖLÜM: SİSTEM LOGLARI (BÜTÜN HAREKETLER)
+# 📜 5. BÖLÜM: SİSTEM LOGLARI 
 # ==========================================
 st.divider()
 st.subheader("📜 Sistem Logları (Son Hareketler)")
 
 log_events = []
 
-# 1. Ev Harcamaları (Eksi Bakiye - Kırmızı)
+# 1. Ev Harcamaları 
 df_all_expenses = run_query("SELECT item_name, price, buyer, date_time FROM expenses")
 if df_all_expenses is not None and not df_all_expenses.empty:
     for _, row in df_all_expenses.iterrows():
@@ -274,7 +294,6 @@ if df_all_expenses is not None and not df_all_expenses.empty:
 if df_energy is not None and not df_energy.empty:
     df_energy['diff'] = df_energy['balance'].diff()
     
-    # Yüklemeler (Artı Bakiye - Yeşil)
     recharges = df_energy[df_energy['diff'] > 20]
     for _, row in recharges.iterrows():
         log_events.append({
@@ -285,11 +304,10 @@ if df_energy is not None and not df_energy.empty:
             'color': '#2ecc71' 
         })
         
-    # Günlük Enerji Tüketimleri (Eksi Bakiye - Turuncu)
     df_energy['date_only'] = df_energy['date_time'].dt.date
     daily_drops = df_energy[df_energy['diff'] < 0].groupby('date_only')['diff'].sum()
     for date_val, drop_val in daily_drops.items():
-        dt_val = pd.to_datetime(date_val) + pd.Timedelta(hours=23, minutes=59) # Gün sonu olarak kaydet
+        dt_val = pd.to_datetime(date_val) + pd.Timedelta(hours=23, minutes=59) 
         if abs(drop_val) > 0:
             log_events.append({
                 'date': dt_val,
@@ -299,12 +317,10 @@ if df_energy is not None and not df_energy.empty:
                 'color': '#ff9800' 
             })
 
-# Logları tarihe göre en yeniden eskiye sırala
 log_events.sort(key=lambda x: x['date'], reverse=True)
 
 if log_events:
     st.markdown('<div style="background:#161b22; border-radius:12px; padding:10px;">', unsafe_allow_html=True)
-    # Sadece en güncel 20 hareketi göster (Ekranı boğmamak için)
     for ev in log_events[:20]:
         amt_str = f"+{ev['amount']:.2f} ₺" if ev['amount'] > 0 else f"{ev['amount']:.2f} ₺"
         date_str = f"{ev['date'].day} {TR_AYLAR[ev['date'].month]} {ev['date'].strftime('%H:%M')}"
