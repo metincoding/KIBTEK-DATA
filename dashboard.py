@@ -103,11 +103,23 @@ if df_energy is not None and not df_energy.empty:
         time_span_days = (recent_df['date_time'].max() - recent_df['date_time'].min()).total_seconds() / 86400.0
         if time_span_days > 0: avg_daily = total_drop / max(1.0, time_span_days)
         else: avg_daily = total_drop
+
+
+
     
-    # 🌟 SON 24 SAAT DÜZELTİLDİ
-    one_day_ago = last_upd - timedelta(hours=28) # Toleranslı pencere
-    last_24h_df = df_energy[df_energy['date_time'] >= one_day_ago]
-    last_24h_cons = float(last_24h_df[last_24h_df['diff'] < 0]['diff'].abs().sum()) if len(last_24h_df) > 0 else 0.0
+   # ✅ SON 24 SAAT GERÇEK TÜKETİM (DOĞRU HESAP)
+one_day_ago = last_upd - timedelta(hours=24)
+# 24 saat öncesine en yakın veri
+past_df = df_energy[df_energy['date_time'] <= one_day_ago]
+if not past_df.empty:
+    past_balance = float(past_df.iloc[-1]['balance'])
+    last_24h_cons = max(0.0, past_balance - curr_bal)
+else:
+    last_24h_cons = 0.0
+
+
+
+    
 
     days_left = int(max(0, curr_bal - 300) / avg_daily) if avg_daily > 0 else 0
     kesinti_tarihi = datetime.now() + timedelta(days=days_left)
