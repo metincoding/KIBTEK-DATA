@@ -90,40 +90,45 @@ st.title("🏠 Daire 6 Ortak Panel")
 if df_energy is not None and not df_energy.empty:
     curr_bal = float(df_energy.iloc[-1]['balance'])
     last_upd = df_energy.iloc[-1]['date_time']
+
+    # ✅ Yüzde hesabı (senin sistemle uyumlu bıraktım)
     percent = max(0.0, min(100.0, ((curr_bal - 300) / 3700) * 100))
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
-    
-    # Metrik Hesaplamaları (Artık çok daha isabetli)
+
+    # =========================
+    # ✅ SON 24 SAAT (DÜZELTİLDİ)
+    # =========================
+    one_day_ago = last_upd - timedelta(hours=24)
+    past_df = df_energy[df_energy['date_time'] <= one_day_ago]
+
+    if not past_df.empty:
+        past_balance = float(past_df.iloc[-1]['balance'])
+        last_24h_cons = max(0.0, past_balance - curr_bal)
+    else:
+        last_24h_cons = 0.0
+
+    # =========================
+    # ✅ SON 7 GÜN ORTALAMA
+    # =========================
     seven_days_ago = last_upd - timedelta(days=7)
     recent_df = df_energy[df_energy['date_time'] >= seven_days_ago]
-    
+
     avg_daily = 0.0
     if len(recent_df) > 1:
         total_drop = float(recent_df[recent_df['diff'] < 0]['diff'].abs().sum())
         time_span_days = (recent_df['date_time'].max() - recent_df['date_time'].min()).total_seconds() / 86400.0
-        if time_span_days > 0: avg_daily = total_drop / max(1.0, time_span_days)
-        else: avg_daily = total_drop
+        if time_span_days > 0:
+            avg_daily = total_drop / max(1.0, time_span_days)
 
+    # =========================
+    # ✅ KALAN GÜN
+    # =========================
+    usable_balance = max(0, curr_bal - 300)
+    days_left = int(usable_balance / avg_daily) if avg_daily > 0 else 0
 
-
-    
-   # ✅ SON 24 SAAT GERÇEK TÜKETİM (DOĞRU HESAP)
-one_day_ago = last_upd - timedelta(hours=24)
-# 24 saat öncesine en yakın veri
-past_df = df_energy[df_energy['date_time'] <= one_day_ago]
-if not past_df.empty:
-    past_balance = float(past_df.iloc[-1]['balance'])
-    last_24h_cons = max(0.0, past_balance - curr_bal)
-else:
-    last_24h_cons = 0.0
-
-
-
-    
-
-    days_left = int(max(0, curr_bal - 300) / avg_daily) if avg_daily > 0 else 0
-    kesinti_tarihi = datetime.now() + timedelta(days=days_left)
-
+    # =========================
+    # ✅ UI (BURASI SİLİNMİŞTİ MUHTEMELEN)
+    # =========================
     st.markdown(f"""
         <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
@@ -137,10 +142,19 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
+    # =========================
+    # ✅ METRİKLER
+    # =========================
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
-    with c2: st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
-    with c3: st.metric("Kalan", f"{days_left} Gün")
+
+    with c1:
+        st.metric("Son 24 Saat", f"{int(last_24h_cons)} ₺")
+
+    with c2:
+        st.metric("Günlük Ort.", f"{int(avg_daily)} ₺")
+
+    with c3:
+        st.metric("Kalan", f"{days_left} Gün")
 
 st.divider()
 
