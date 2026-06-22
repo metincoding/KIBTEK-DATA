@@ -347,7 +347,7 @@ log_events.sort(key=lambda x: x['date'], reverse=True)
 
 if log_events:
     st.markdown('<div style="background:#161b22; border-radius:12px; padding:10px;">', unsafe_allow_html=True)
-    for ev in log_events[:20]:
+    for ev in log_events[:50]:
         amt_str = f"+{ev['amount']:.2f} ₺" if ev['amount'] > 0 else f"{ev['amount']:.2f} ₺"
         date_str = f"{ev['date'].day} {TR_AYLAR[ev['date'].month]} {ev['date'].strftime('%H:%M')}"
         st.markdown(f"""
