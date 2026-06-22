@@ -9,7 +9,7 @@ st.set_page_config(page_title="Daire 6 Pro", page_icon="🏠", layout="centered"
 TR_AYLAR = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran", 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
 
 # EV SAKİNLERİ
-EV_SAKINLERI = ["Metin", "Zafer", "Murat", "Mehmet"]
+EV_SAKINLERI = ["Metin", "Zafer", "Doğan", "Mehmet"]
 
 if 'user' not in st.session_state: st.session_state.user = None
 
