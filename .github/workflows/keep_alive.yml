@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Uygulamaya İstek Gönder
         run: |
-          curl -I https://kibtek-data-knz7c69fis449g7rtdyxwk.streamlit.app
+          curl -sL -w "HTTP Durum Kodu: %{http_code}\n" -o /dev/null https://kibtek-data-knz7c69fis449g7rtdyxwk.streamlit.app
