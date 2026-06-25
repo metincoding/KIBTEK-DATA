@@ -2,14 +2,13 @@ name: Streamlit Uygulamasini Uyanik Tut
 
 on:
   schedule:
-    # Her 4 saatte bir çalışır (Cron ifadesi)
     - cron: '0 */4 * * *'
-  workflow_dispatch: # İsterseniz GitHub üzerinden elle de tetikleyebilirsiniz
+  workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Uygulamaya İstek Gönder
+      - name: Uygulamaya Istek Gonder
         run: |
-          curl -sL -w "HTTP Durum Kodu: %{http_code}\n" -o /dev/null https://kibtek-data-knz7c69fis449g7rtdyxwk.streamlit.app
+          curl -s -o /dev/null -w "HTTP Durum Kodu: %{http_code}\n" https://kibtek-data-knz7c69fis449g7rtdyxwk.streamlit.app || true
