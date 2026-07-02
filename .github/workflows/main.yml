@@ -2,8 +2,10 @@ name: Kibtek Bakiye Scraper
 
 on:
   schedule:
-    - cron: '0 10 * * *'
-  workflow_dispatch: # İstediğimiz zaman manuel çalıştırma butonu ekler
+    # Atina saatine (UTC+3) göre 09:00 ve 12:00'de çalışır.
+    # GitHub UTC kullandığı için 3 saat gerisi (06:00 ve 09:00) yazılır.
+    - cron: '0 6,9 * * *'
+  workflow_dispatch: 
 
 jobs:
   scrape-and-save:
@@ -24,7 +26,6 @@ jobs:
     - name: Kütüphaneleri Yükle
       run: |
         pip install -r requirements.txt
-
 
     - name: Botu Çalıştır
       env:
