@@ -91,8 +91,8 @@ if df_energy is not None and not df_energy.empty:
     curr_bal = float(df_energy.iloc[-1]['balance'])
     last_upd = df_energy.iloc[-1]['date_time']
 
-    # ✅ Yüzde hesabı (senin sistemle uyumlu bıraktım)
-    percent = max(0.0, min(100.0, ((curr_bal - 300) / 3700) * 100))
+    # ✅ Yüzde hesabı (7000 TL Üst Sınıra Göre Güncellendi)
+    percent = max(0.0, min(100.0, ((curr_bal - 300) / 6700) * 100))
     color = "#F44336" if percent < 15 else ("#FFC107" if percent < 40 else "#4CAF50")
 
     # =========================
@@ -127,7 +127,7 @@ if df_energy is not None and not df_energy.empty:
     days_left = int(usable_balance / avg_daily) if avg_daily > 0 else 0
 
     # =========================
-    # ✅ UI (BURASI SİLİNMİŞTİ MUHTEMELEN)
+    # ✅ UI
     # =========================
     st.markdown(f"""
         <div style="background:#1a1a1a; border-radius:15px; padding:20px; border:1px solid #333;">
