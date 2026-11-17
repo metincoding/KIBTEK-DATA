@@ -213,7 +213,7 @@ header[data-testid="stHeader"] {
     margin-bottom: 16px;
 }
 
-/* MOBİL UYUMLU 3'LÜ KPI GRID (Asla alt alta kırılmaz) */
+/* MOBİL UYUMLU 3'LÜ KPI GRID */
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -382,7 +382,7 @@ header[data-testid="stHeader"] {
     font-weight: 700;
 }
 
-/* TERMİNAL LOG KUTUSU (SABİT YÜKSEKLİK & KAYDIRILABİLİR) */
+/* TERMİNAL LOG KUTUSU */
 .log-terminal {
     background: #0B0F17;
     border: 1px solid var(--border-subtle);
@@ -423,7 +423,6 @@ header[data-testid="stHeader"] {
     flex-shrink: 0;
 }
 
-/* STREAMLIT BİLEŞEN İYİLEŞTİRMELERİ */
 div[data-testid="stTabs"] button {
     font-weight: 600 !important;
     font-size: 0.85rem !important;
@@ -598,7 +597,8 @@ payments = run_query("""
     WHERE p.status = 'pending_payment'
 """)
 
-if not payments.empty:
+# 🌟 KRİTİK DÜZELTME: PostgreSQL Decimal tipini float'a çeviriyoruz
+if payments is not None and not payments.empty:
     payments['amount'] = pd.to_numeric(payments['amount'], errors='coerce').fillna(0.0)
     payments['date'] = pd.to_datetime(payments['date'])
 
@@ -628,8 +628,8 @@ else:
         for name in EV_SAKINLERI:
             if name == my_name:
                 continue
-            they_owe = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
-            i_owe = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
+            they_owe = float(payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum())
+            i_owe = float(payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum())
             fark = they_owe - i_owe
             if fark > 0:
                 toplam_alacak += fark
@@ -687,8 +687,8 @@ else:
             for name in EV_SAKINLERI:
                 if name == my_name:
                     continue
-                they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
-                i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
+                they_owe_me = float(payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum())
+                i_owe_them = float(payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum())
                 net_debt = i_owe_them - they_owe_me
                 if net_debt > 0:
                     borclar[name] = net_debt
@@ -723,8 +723,8 @@ else:
             for name in EV_SAKINLERI:
                 if name == my_name:
                     continue
-                they_owe_me = payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum()
-                i_owe_them = payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum()
+                they_owe_me = float(payments[(payments['payer'] == name) & (payments['receiver'] == my_name)]['amount'].sum())
+                i_owe_them = float(payments[(payments['payer'] == my_name) & (payments['receiver'] == name)]['amount'].sum())
                 net_credit = they_owe_me - i_owe_them
                 if net_credit > 0:
                     alacaklar[name] = net_credit
@@ -775,8 +775,8 @@ if not payments.empty:
             continue
         processed_pairs.add(pair)
 
-        amt1 = net_matrix[(net_matrix['payer'] == p1) & (net_matrix['receiver'] == p2)]['amount'].sum()
-        amt2 = net_matrix[(net_matrix['payer'] == p2) & (net_matrix['receiver'] == p1)]['amount'].sum()
+        amt1 = float(net_matrix[(net_matrix['payer'] == p1) & (net_matrix['receiver'] == p2)]['amount'].sum())
+        amt2 = float(net_matrix[(net_matrix['payer'] == p2) & (net_matrix['receiver'] == p1)]['amount'].sum())
 
         mahsup_toplam += min(amt1, amt2)
         diff = amt1 - amt2
@@ -823,7 +823,7 @@ if not payments.empty:
     # 2. OTOMATİK MAHSUPLAŞMA LİSTESİ
     offset_rows = []
     for _, row in payments.iterrows():
-        opp_amt = net_matrix[(net_matrix['payer'] == row['receiver']) & (net_matrix['receiver'] == row['payer'])]['amount'].sum()
+        opp_amt = float(net_matrix[(net_matrix['payer'] == row['receiver']) & (net_matrix['receiver'] == row['payer'])]['amount'].sum())
         if opp_amt > 0:
             offset_rows.append(row)
 
@@ -895,6 +895,7 @@ log_events = []
 
 df_all_expenses = run_query("SELECT item_name, price, buyer, date_time FROM expenses")
 if df_all_expenses is not None and not df_all_expenses.empty:
+    df_all_expenses['price'] = pd.to_numeric(df_all_expenses['price'], errors='coerce').fillna(0.0)
     for _, row in df_all_expenses.iterrows():
         log_events.append({
             'date': pd.to_datetime(row['date_time']),
