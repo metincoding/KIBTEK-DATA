@@ -129,12 +129,12 @@ def main():
             print(f"\n✅ İŞLEM BAŞARILI!\nKayıt Zamanı: {now}\nKaydedilen Tutar: {bakiye} TL")
             
             # --- YÜZDE HESAPLAMA VE MAİL KONTROLÜ ---
-            if bakiye >= 4000:
+            if bakiye >= 7000:
                 percent = 100.0
             elif bakiye <= 500:
                 percent = (bakiye / 500) * 5.0
             else:
-                percent = 5 + ((bakiye - 500) / 3500) * 95
+                percent = 5 + ((bakiye - 500) / 6500) * 95
                 
             if percent <= 10.0:
                 print("Bakiye %10 veya altına düştü! Uyarı maili tetikleniyor...")
@@ -147,6 +147,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
