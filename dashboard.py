@@ -598,6 +598,10 @@ payments = run_query("""
     WHERE p.status = 'pending_payment'
 """)
 
+if not payments.empty:
+    payments['amount'] = pd.to_numeric(payments['amount'], errors='coerce').fillna(0.0)
+    payments['date'] = pd.to_datetime(payments['date'])
+
 if st.session_state.user is None:
     with st.expander("🔑 Harcama Eklemek veya Tahsilat Onaylamak İçin Giriş Yapın"):
         col_u, col_p, col_b = st.columns([2, 2, 1])
